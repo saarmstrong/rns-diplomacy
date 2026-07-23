@@ -110,7 +110,7 @@ ADJACENCY: dict[str, set[str]] = {
     "ash_caldera": {"ash_crater", "bleakwater", "scorchwind", "south_strait"},
     "ash_crater": {"ash_caldera", "scorchwind", "bleakwater"},
     # --- Kholmari ---
-    "kho_spire": {"kho_harbor", "stormveil", "bleakwater"},
+    "kho_spire": {"kho_harbor", "stormveil", "bleakwater", "east_deep"},
     "kho_harbor": {"kho_spire", "bleakwater", "east_deep"},
     # --- Ironwake ---
     "irn_citadel": {"irn_forge", "driftwood", "shattered_sea"},
@@ -128,7 +128,7 @@ ADJACENCY: dict[str, set[str]] = {
     "tempest_isle": {"irn_forge", "gulf_of_echoes", "east_deep", "south_strait"},
     # --- Sea zones ---
     "north_reach": {"vet_shore", "thr_cove", "stormveil", "shattered_sea", "driftwood"},
-    "east_deep": {"kho_harbor", "stormveil", "bleakwater", "tempest_isle", "shattered_sea"},
+    "east_deep": {"kho_harbor", "kho_spire", "stormveil", "bleakwater", "tempest_isle", "shattered_sea"},
     "south_strait": {"sol_coast", "ash_caldera", "the_narrows", "tempest_isle", "gulf_of_echoes"},
     "west_reach": {"thr_cove", "dsk_port", "the_narrows", "shattered_sea", "driftwood"},
     "shattered_sea": {

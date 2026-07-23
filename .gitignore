@@ -19,6 +19,10 @@ dist/
 *.db
 *.sqlite3
 
+# Test artifacts
+.coverage
+.pytest_cache/
+
 # IDE
 .idea/
 .vscode/

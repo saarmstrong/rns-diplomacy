@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Union
 
+from engine.model import UnitType
+
 
 class OrderType(Enum):
     """The type of order a unit can receive."""
@@ -55,3 +57,28 @@ class SupportMoveOrder:
 
 # Union of all order types for type annotations
 Order = Union[HoldOrder, MoveOrder, SupportHoldOrder, SupportMoveOrder]
+
+
+@dataclass(frozen=True)
+class RetreatOrder:
+    """Order a dislodged unit to retreat, or disband if destination_id is None."""
+
+    unit_region_id: str
+    destination_id: str | None = None
+
+
+@dataclass(frozen=True)
+class BuildOrder:
+    """Order to build a new unit at a controlled home supply center (adjustment phase)."""
+
+    faction_id: str
+    region_id: str
+    unit_type: UnitType
+
+
+@dataclass(frozen=True)
+class DisbandOrder:
+    """Order to disband an existing unit (adjustment phase)."""
+
+    faction_id: str
+    region_id: str

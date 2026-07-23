@@ -58,6 +58,26 @@ class SupportMoveOrder:
 # Union of all order types for type annotations
 Order = Union[HoldOrder, MoveOrder, SupportHoldOrder, SupportMoveOrder]
 
+_ORDER_CLASSES_BY_TYPE: dict[OrderType, type] = {
+    OrderType.HOLD: HoldOrder,
+    OrderType.MOVE: MoveOrder,
+    OrderType.SUPPORT_HOLD: SupportHoldOrder,
+    OrderType.SUPPORT_MOVE: SupportMoveOrder,
+}
+
+
+def order_from_dict(raw: dict) -> Order:
+    """Reconstruct a movement-phase Order from its canonicalized dict form.
+
+    ``raw`` is the shape produced by canonicalizing an Order dataclass
+    (e.g. via ``engine.hashing.canonicalize``): field names to values,
+    with ``order_type`` holding the ``OrderType`` value string.
+    """
+    order_type = OrderType(raw["order_type"])
+    cls = _ORDER_CLASSES_BY_TYPE[order_type]
+    kwargs = {k: v for k, v in raw.items() if k != "order_type"}
+    return cls(**kwargs)
+
 
 @dataclass(frozen=True)
 class RetreatOrder:

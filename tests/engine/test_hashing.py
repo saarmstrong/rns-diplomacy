@@ -7,12 +7,15 @@ from dataclasses import replace
 from engine.hashing import (
     canonical_bytes,
     canonicalize,
+    game_state_from_canonical_bytes,
     hash_game_state,
     hash_game_state_hex,
+    hash_orders,
     verify_chain,
 )
 from engine.map import create_default_map
 from engine.model import RegionType, Unit
+from engine.orders import HoldOrder, MoveOrder
 
 
 def test_hash_is_deterministic_for_identical_states():
@@ -93,3 +96,32 @@ def test_verify_chain_rejects_mismatched_lengths():
     state0 = create_default_map()
     h0 = hash_game_state(state0)
     assert verify_chain([state0], [h0, b"extra"]) is False
+
+
+def test_hash_orders_is_deterministic():
+    orders = (HoldOrder(unit_region_id="vet_peak"), MoveOrder(unit_region_id="thr_heart", destination_id="pale_ridge"))
+    assert hash_orders(orders) == hash_orders(orders)
+
+
+def test_hash_orders_changes_when_orders_differ():
+    orders_a = (HoldOrder(unit_region_id="vet_peak"),)
+    orders_b = (MoveOrder(unit_region_id="vet_peak", destination_id="pale_ridge"),)
+    assert hash_orders(orders_a) != hash_orders(orders_b)
+
+
+def test_hash_orders_of_empty_set_is_stable():
+    assert hash_orders(()) == hash_orders([])
+
+
+def test_game_state_from_canonical_bytes_round_trips_semantically():
+    state = create_default_map()
+    reconstructed = game_state_from_canonical_bytes(canonical_bytes(state))
+
+    assert reconstructed.regions == state.regions
+    assert reconstructed.factions == state.factions
+    assert reconstructed.supply_centers == state.supply_centers
+    assert reconstructed.phase == state.phase
+    assert reconstructed.turn == state.turn
+    assert reconstructed.year == state.year
+    assert sorted(reconstructed.units, key=lambda u: u.region_id) == sorted(state.units, key=lambda u: u.region_id)
+    assert hash_game_state(reconstructed) == hash_game_state(state)

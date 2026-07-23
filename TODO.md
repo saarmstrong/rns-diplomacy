@@ -106,48 +106,48 @@
 
 ### Message Models
 
-- [ ] Define DISCOVER_GAME message
-- [ ] Define GAME_INFO message
-- [ ] Define JOIN_REQUEST message
-- [ ] Define JOIN_ACCEPTED message (with encrypted faction field)
-- [ ] Define JOIN_REJECTED message
-- [ ] Define NEGOTIATION message
-- [ ] Define NEGOTIATION_ACK message
-- [ ] Define ORDER_SUBMIT message
-- [ ] Define ORDER_RECEIPT message (with order hash)
-- [ ] Define ORDER_UPDATE message
-- [ ] Define ORDER_CANCEL message
-- [ ] Define ORDER_STATUS message
-- [ ] Define PHASE_START message
-- [ ] Define PHASE_RESULT message (with signed state)
-- [ ] Define PHASE_DEADLINE_WARNING message
-- [ ] Define STATE_REQUEST message
-- [ ] Define STATE_RESPONSE message
-- [ ] Define STATE_HASH message
-- [ ] Define DRAW_PROPOSE message
-- [ ] Define DRAW_VOTE message
-- [ ] Define DRAW_RESULT message
-- [ ] Define MATCH_START message
-- [ ] Define MATCH_END message
-- [ ] Define ERROR message
-- [ ] Add protocol version field to all messages
-- [ ] Add sequence number and timestamp fields for replay protection
+- [x] Define DISCOVER_GAME message
+- [x] Define GAME_INFO message
+- [x] Define JOIN_REQUEST message
+- [x] Define JOIN_ACCEPTED message (with encrypted faction field)
+- [x] Define JOIN_REJECTED message
+- [x] Define NEGOTIATION message
+- [x] Define NEGOTIATION_ACK message
+- [x] Define ORDER_SUBMIT message
+- [x] Define ORDER_RECEIPT message (with order hash)
+- [x] Define ORDER_UPDATE message
+- [x] Define ORDER_CANCEL message
+- [x] Define ORDER_STATUS message
+- [x] Define PHASE_START message
+- [x] Define PHASE_RESULT message (with signed state)
+- [x] Define PHASE_DEADLINE_WARNING message
+- [x] Define STATE_REQUEST message
+- [x] Define STATE_RESPONSE message
+- [x] Define STATE_HASH message
+- [x] Define DRAW_PROPOSE message
+- [x] Define DRAW_VOTE message
+- [x] Define DRAW_RESULT message
+- [x] Define MATCH_START message
+- [x] Define MATCH_END message
+- [x] Define ERROR message
+- [x] Add protocol version field to all messages
+- [x] Add sequence number and timestamp fields for replay protection
 
 ### Protocol Encoding & Validation
 
-- [ ] Implement message serialization for all types
-- [ ] Implement message deserialization with type dispatch
-- [ ] Implement schema validation on all received messages
-- [ ] Implement size limit checks on all messages
-- [ ] Test round-trip encoding/decoding for every message type
-- [ ] Test validation rejects malformed messages
-- [ ] Test version checking
+- [x] Implement message serialization for all types
+- [x] Implement message deserialization with type dispatch
+- [x] Implement schema validation on all received messages
+- [x] Implement size limit checks on all messages
+- [x] Test round-trip encoding/decoding for every message type
+- [x] Test validation rejects malformed messages
+- [x] Test version checking
 
 ### Transport
 
-- [ ] Define abstract Transport interface (send, receive, announce, discover)
-- [ ] Implement InMemoryTransport for testing
-- [ ] Test InMemoryTransport message delivery
+- [x] Define abstract Transport interface (send, receive, announce, discover)
+- [x] Implement InMemoryTransport for testing
+- [x] Test InMemoryTransport message delivery
 - [ ] Implement ReticulumTransport with TCP/IP interface
 - [ ] Set up Reticulum destinations (rns_diplomacy.game, rns_diplomacy.player)
 - [ ] Implement announce for match discovery
@@ -157,56 +157,56 @@
 
 ### State Machine
 
-- [ ] Implement match states: lobby → active → completed
-- [ ] Implement phase states within active: movement → retreat (conditional) → adjustment (conditional)
-- [ ] Guard invalid transitions
-- [ ] Test state machine transitions
+- [x] Implement match states: lobby → active → completed
+- [x] Implement phase states within active: movement → retreat (conditional) → adjustment (conditional)
+- [x] Guard invalid transitions
+- [x] Test state machine transitions
 
 ### Persistence
 
-- [ ] Design SQLite schema (matches, players, factions, orders, phases, results, hash_chain)
-- [ ] Implement data access layer (create, read, update for all entities)
-- [ ] Wrap all mutations in atomic transactions
-- [ ] Test persistence round-trips
-- [ ] Test restart recovery (load state from SQLite, verify consistency)
+- [x] Design SQLite schema (matches, players, factions, orders, phases, results, hash_chain)
+- [x] Implement data access layer (create, read, update for all entities)
+- [x] Wrap all mutations in atomic transactions
+- [x] Test persistence round-trips
+- [x] Test restart recovery (load state from SQLite, verify consistency)
 
 ### Join Flow
 
-- [ ] Handle JOIN_REQUEST: validate, check capacity (max 7)
-- [ ] Assign factions (random or configured)
-- [ ] Encrypt faction assignment per-player
-- [ ] Send JOIN_ACCEPTED with encrypted faction
-- [ ] Send JOIN_REJECTED with reason
-- [ ] Persist player-faction mapping
-- [ ] Broadcast MATCH_START when 7 players joined and operator starts
+- [x] Handle JOIN_REQUEST: validate, check capacity (max 7)
+- [x] Assign factions (random or configured)
+- [x] Encrypt faction assignment per-player
+- [x] Send JOIN_ACCEPTED with encrypted faction
+- [x] Send JOIN_REJECTED with reason
+- [x] Persist player-faction mapping
+- [x] Broadcast MATCH_START when 7 players joined and operator starts
 
 ### Phase Management
 
-- [ ] Start movement phase with deadline
-- [ ] Track deadline expiration
-- [ ] Send PHASE_DEADLINE_WARNING before expiry
-- [ ] Apply default hold orders for non-submitting players at deadline
-- [ ] Run adjudication at phase end
-- [ ] Produce signed PHASE_RESULT with hash chain
-- [ ] Transition to retreat phase if dislodgements exist
-- [ ] Transition to adjustment phase if needed
-- [ ] Support manual phase advance (dev mode)
+- [x] Start movement phase with deadline
+- [x] Track deadline expiration
+- [x] Send PHASE_DEADLINE_WARNING before expiry
+- [x] Apply default hold orders for non-submitting players at deadline
+- [x] Run adjudication at phase end
+- [x] Produce signed PHASE_RESULT with hash chain
+- [x] Transition to retreat phase if dislodgements exist
+- [x] Transition to adjustment phase if needed
+- [x] Support manual phase advance (dev mode)
 
 ### Order Handling
 
-- [ ] Accept ORDER_SUBMIT: validate, store with revision number
-- [ ] Send ORDER_RECEIPT with hash of accepted orders
-- [ ] Handle ORDER_UPDATE: replace previous revision
-- [ ] Handle ORDER_CANCEL: clear orders for player
-- [ ] Respond to ORDER_STATUS requests
+- [x] Accept ORDER_SUBMIT: validate, store with revision number
+- [x] Send ORDER_RECEIPT with hash of accepted orders
+- [x] Handle ORDER_UPDATE: replace previous revision
+- [x] Handle ORDER_CANCEL: clear orders for player
+- [x] Respond to ORDER_STATUS requests
 
 ### Draw Handling
 
-- [ ] Handle DRAW_PROPOSE
-- [ ] Handle DRAW_VOTE
-- [ ] Determine draw outcome (unanimous or majority, configurable)
-- [ ] Send DRAW_RESULT
-- [ ] End match on accepted draw
+- [x] Handle DRAW_PROPOSE
+- [x] Handle DRAW_VOTE
+- [x] Determine draw outcome (unanimous or majority, configurable)
+- [x] Send DRAW_RESULT
+- [x] End match on accepted draw
 
 ## Phase 5: Client
 

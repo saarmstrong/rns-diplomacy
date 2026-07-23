@@ -7,6 +7,7 @@ import pytest
 from engine.adjudicator import _normalize_order
 from engine.map import create_default_map
 from engine.model import Unit, UnitType
+from engine.hashing import canonicalize
 from engine.orders import (
     BuildOrder,
     DisbandOrder,
@@ -16,6 +17,7 @@ from engine.orders import (
     RetreatOrder,
     SupportHoldOrder,
     SupportMoveOrder,
+    order_from_dict,
 )
 
 
@@ -145,3 +147,21 @@ def test_support_move_supporter_cannot_reach_destination_normalizes_to_hold():
     )
     assert normalized is True
     assert order == HoldOrder("vet_peak")
+
+
+@pytest.mark.parametrize(
+    "order",
+    [
+        HoldOrder(unit_region_id="vet_peak"),
+        MoveOrder(unit_region_id="vet_peak", destination_id="pale_ridge"),
+        SupportHoldOrder(unit_region_id="thr_heart", supported_region_id="vet_peak"),
+        SupportMoveOrder(unit_region_id="thr_heart", supported_region_id="vet_peak", supported_destination_id="pale_ridge"),
+    ],
+)
+def test_order_from_dict_round_trips_through_canonicalize(order):
+    assert order_from_dict(canonicalize(order)) == order
+
+
+def test_order_from_dict_rejects_unknown_order_type():
+    with pytest.raises(ValueError):
+        order_from_dict({"order_type": "convoy", "unit_region_id": "vet_peak"})

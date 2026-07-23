@@ -8,13 +8,16 @@ client can recompute the chain locally and compare.
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
+from collections.abc import Sequence
 from enum import Enum
 from typing import Any
 
 import msgpack
 
-from engine.model import Faction, GameState, Region, Unit
+from engine.model import Faction, GameState, Phase, Region, RegionType, Unit, UnitType
+from engine.orders import Order
 
 Canonical = Any
 
@@ -67,12 +70,50 @@ def canonicalize(value: Any) -> Canonical:
         return [canonicalize(v) for v in value]
     if isinstance(value, Enum):
         return value.value
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        return canonicalize(dataclasses.asdict(value))
     return value
 
 
 def canonical_bytes(state: GameState) -> bytes:
     """Serialize a game state to canonical, deterministic bytes."""
     return msgpack.packb(canonicalize(state), use_bin_type=True)
+
+
+def game_state_from_canonical(data: dict) -> GameState:
+    """Reconstruct a GameState from its canonicalized dict form (reverses ``canonicalize``)."""
+    regions = {
+        region_id: Region(
+            id=r["id"],
+            name=r["name"],
+            region_type=RegionType(r["region_type"]),
+            is_supply_center=r["is_supply_center"],
+            abbreviation=r["abbreviation"],
+        )
+        for region_id, r in data["regions"].items()
+    }
+    factions = {
+        faction_id: Faction(id=f["id"], name=f["name"], color=f["color"], abbreviation=f["abbreviation"])
+        for faction_id, f in data["factions"].items()
+    }
+    units = [
+        Unit(unit_type=UnitType(u["unit_type"]), faction_id=u["faction_id"], region_id=u["region_id"])
+        for u in data["units"]
+    ]
+    return GameState(
+        regions=regions,
+        factions=factions,
+        units=units,
+        supply_centers=dict(data["supply_centers"]),
+        phase=Phase(data["phase"]),
+        turn=data["turn"],
+        year=data["year"],
+    )
+
+
+def game_state_from_canonical_bytes(payload: bytes) -> GameState:
+    """Reconstruct a GameState from ``canonical_bytes`` output."""
+    return game_state_from_canonical(msgpack.unpackb(payload, raw=False))
 
 
 def hash_game_state(state: GameState, previous_hash: bytes | None = None) -> bytes:
@@ -106,3 +147,13 @@ def verify_chain(states: list[GameState], hashes: list[bytes]) -> bool:
             return False
         previous = expected
     return True
+
+
+def hash_orders(orders: Sequence[Order]) -> str:
+    """Hex SHA-256 hash of a canonical encoding of an order set.
+
+    Used for ORDER_RECEIPT so a client can independently verify the
+    coordinator recorded exactly the orders it submitted.
+    """
+    payload = msgpack.packb([canonicalize(o) for o in orders], use_bin_type=True)
+    return hashlib.sha256(payload).hexdigest()

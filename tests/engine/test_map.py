@@ -8,15 +8,22 @@ from engine.map import (
     REGIONS,
     STARTING_SUPPLY_CENTERS,
     STARTING_UNITS,
+    create_default_graph,
     create_default_map,
 )
 from engine.model import Phase, RegionType, UnitType
+from engine.state import get_legal_moves
 
 
 def test_seven_factions():
     assert len(FACTIONS) == 7
     for faction_id, faction in FACTIONS.items():
         assert faction.id == faction_id
+
+
+def test_default_map_graph_validates_and_exposes_neighbors():
+    graph = create_default_graph()
+    assert graph.neighbors("vet_peak") == frozenset(ADJACENCY["vet_peak"])
 
 
 def test_region_count_in_expected_range():
@@ -85,6 +92,24 @@ def test_starting_units_placed_on_legal_terrain():
             assert region.region_type != RegionType.SEA
         else:
             assert region.region_type != RegionType.LAND
+
+
+def test_each_faction_has_a_viable_starting_position():
+    state = create_default_map()
+    for faction_id in FACTIONS:
+        units = [unit for unit in state.units if unit.faction_id == faction_id]
+        assert len(units) == 2
+        assert any(get_legal_moves(state, unit) for unit in units)
+
+
+def test_home_metadata_matches_starting_supply_centers():
+    for faction_id, faction in FACTIONS.items():
+        assert set(faction.home_centers) == {
+            region_id for region_id, owner in STARTING_SUPPLY_CENTERS.items() if owner == faction_id
+        }
+        assert set(faction.home_regions) == set(faction.home_centers)
+        for region_id in faction.home_regions:
+            assert REGIONS[region_id].home_faction == faction_id
 
 
 def test_starting_units_two_per_faction():

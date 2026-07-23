@@ -68,6 +68,7 @@ from protocol.messages import (
 from protocol.validation import validate_message
 from shared import time as shared_time
 from shared.identity import Identity
+from shared.logging import protocol_logger
 from shared.time import Deadline
 from shared.transport import InboundMessage, Transport
 
@@ -94,6 +95,12 @@ class MatchCoordinator:
         self.config = config or MatchConfig()
         self._sequence_number = 0
         self._warned_this_phase = False
+        self._logger = protocol_logger()
+        # Highest accepted sequence per sending identity. This state is only
+        # an in-process fast-path; durable order revisions remain the final
+        # replay guard across coordinator restarts.
+        self._last_sequence_by_sender: dict[bytes, int] = {}
+        self._join_attempts: dict[bytes, list[float]] = {}
         self._handlers = {
             DiscoverGame: self._on_discover_game,
             JoinRequest: self._on_join_request,
@@ -117,7 +124,22 @@ class MatchCoordinator:
     ) -> MatchCoordinator:
         """Register a brand-new match (fresh coordinator identity) and return its coordinator."""
         store.create_match(match_id, Identity.generate(), created_at=now if now is not None else shared_time.now())
-        return cls(match_id, store, transport, config=config)
+        coordinator = cls(match_id, store, transport, config=config)
+        coordinator.announce_game()
+        return coordinator
+
+    def announce_game(self) -> None:
+        """Publish a discoverable lobby/active-match summary on the transport."""
+        record = self._require_match_state()
+        self.transport.announce(
+            encode_message(
+                GameInfo(
+                    sequence_number=self._next_sequence(), timestamp=self._now(), match_id=self.match_id,
+                    status=record.status, player_count=len(self.store.list_players(self.match_id)),
+                    max_players=MAX_PLAYERS, phase=record.phase if record.status is MatchStatus.ACTIVE else None,
+                )
+            )
+        )
 
     # --- Inbound message handling ---------------------------------------
 
@@ -129,11 +151,18 @@ class MatchCoordinator:
             self.check_deadline()
 
     def handle_inbound(self, inbound: InboundMessage) -> None:
-        public_key = bytes.fromhex(inbound.sender)
         try:
+            public_key = bytes.fromhex(inbound.sender)
             message = decode_message(inbound.data)
             validate_message(message)
-        except (DecodingError, ValidationError) as exc:
+        except (ValueError, DecodingError, ValidationError) as exc:
+            # A malformed sender cannot be replied to safely.
+            try:
+                public_key = bytes.fromhex(inbound.sender)
+            except ValueError:
+                self._logger.warning("discarded malformed message from invalid sender %r", inbound.sender)
+                return
+            self._logger.warning("rejected malformed message from %s: %s", inbound.sender, exc)
             self._reply(
                 public_key,
                 ErrorMessage(
@@ -145,6 +174,21 @@ class MatchCoordinator:
             )
             return
 
+        last_sequence = self._last_sequence_by_sender.get(public_key, -1)
+        if message.sequence_number <= last_sequence:
+            self._logger.warning("rejected replay from %s at sequence %d", inbound.sender, message.sequence_number)
+            self._reply(
+                public_key,
+                ErrorMessage(
+                    sequence_number=self._next_sequence(),
+                    timestamp=self._now(),
+                    code="REPLAYED_MESSAGE",
+                    description="sequence number was already processed",
+                    related_sequence_number=message.sequence_number,
+                ),
+            )
+            return
+        self._last_sequence_by_sender[public_key] = message.sequence_number
         handler = self._handlers.get(type(message))
         if handler is not None:
             handler(public_key, message)
@@ -165,6 +209,31 @@ class MatchCoordinator:
         self._reply(public_key, response)
 
     def _on_join_request(self, public_key: bytes, message: JoinRequest) -> None:
+        current_time = self._now()
+        if message.player_public_key != public_key:
+            self._logger.warning("rejected join with mismatched identity from %s", public_key.hex())
+            self._reply(
+                public_key,
+                ErrorMessage(
+                    sequence_number=self._next_sequence(), timestamp=current_time,
+                    code="IDENTITY_MISMATCH", description="JOIN_REQUEST key must match the sending destination",
+                ),
+            )
+            return
+        attempts = [at for at in self._join_attempts.get(public_key, []) if current_time - at < 60.0]
+        if len(attempts) >= 5:
+            self._logger.warning("rate-limited join requests from %s", public_key.hex())
+            self._join_attempts[public_key] = attempts
+            self._reply(
+                public_key,
+                ErrorMessage(
+                    sequence_number=self._next_sequence(), timestamp=current_time,
+                    code="JOIN_RATE_LIMITED", description="too many join requests; retry in one minute",
+                ),
+            )
+            return
+        attempts.append(current_time)
+        self._join_attempts[public_key] = attempts
         response = lobby.handle_join_request(
             self.store, self.match_id, message, sequence_number=self._next_sequence(), timestamp=self._now()
         )
@@ -314,6 +383,23 @@ class MatchCoordinator:
                 deadline=deadline.expires_at,
             )
         )
+
+    def pause(self, *, now: float | None = None) -> None:
+        """Pause an active deadline while preserving its remaining duration."""
+        expires_at = self.store.get_deadline(self.match_id)
+        if expires_at is None:
+            raise InvalidTransitionError("match is not running a deadline")
+        current_time = now if now is not None else self._now()
+        self.store.pause_deadline(self.match_id, remaining_seconds=max(0.0, expires_at - current_time))
+
+    def resume(self, *, now: float | None = None) -> None:
+        """Resume a paused deadline from its persisted remaining duration."""
+        remaining = self.store.get_paused_remaining(self.match_id)
+        if remaining is None:
+            raise InvalidTransitionError("match is not paused")
+        current_time = now if now is not None else self._now()
+        self.store.resume_deadline(self.match_id, expires_at=current_time + remaining)
+        self._warned_this_phase = False
 
     def check_deadline(self, *, now: float | None = None) -> None:
         """Send a deadline warning if due, or advance the phase once the deadline has passed."""

@@ -56,6 +56,7 @@ def canonicalize(value: Any) -> Canonical:
             "region_type": value.region_type.value,
             "is_supply_center": value.is_supply_center,
             "abbreviation": value.abbreviation,
+            "home_faction": value.home_faction,
         }
     if isinstance(value, Faction):
         return {
@@ -63,6 +64,8 @@ def canonicalize(value: Any) -> Canonical:
             "name": value.name,
             "color": value.color,
             "abbreviation": value.abbreviation,
+            "home_regions": list(value.home_regions),
+            "home_centers": list(value.home_centers),
         }
     if isinstance(value, dict):
         return {str(k): canonicalize(v) for k, v in sorted(value.items(), key=lambda kv: str(kv[0]))}
@@ -89,11 +92,15 @@ def game_state_from_canonical(data: dict) -> GameState:
             region_type=RegionType(r["region_type"]),
             is_supply_center=r["is_supply_center"],
             abbreviation=r["abbreviation"],
+            home_faction=r.get("home_faction"),
         )
         for region_id, r in data["regions"].items()
     }
     factions = {
-        faction_id: Faction(id=f["id"], name=f["name"], color=f["color"], abbreviation=f["abbreviation"])
+        faction_id: Faction(
+            id=f["id"], name=f["name"], color=f["color"], abbreviation=f["abbreviation"],
+            home_regions=tuple(f.get("home_regions", ())), home_centers=tuple(f.get("home_centers", ())),
+        )
         for faction_id, f in data["factions"].items()
     }
     units = [

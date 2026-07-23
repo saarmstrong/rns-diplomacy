@@ -30,6 +30,11 @@ class PublicIdentity:
         return self._public_bytes
 
     @property
+    def rns_identity(self) -> RNS.Identity:
+        """Underlying public RNS identity for destination construction."""
+        return self._rns_identity
+
+    @property
     def identity_hash(self) -> bytes:
         return self._rns_identity.hash
 
@@ -67,6 +72,11 @@ class Identity:
     @property
     def public_bytes(self) -> bytes:
         return self._rns_identity.get_public_key()
+
+    @property
+    def rns_identity(self) -> RNS.Identity:
+        """Underlying private RNS identity; use only with RNS/LXMF APIs."""
+        return self._rns_identity
 
     @property
     def identity_hash(self) -> bytes:

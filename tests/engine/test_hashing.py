@@ -14,7 +14,7 @@ from engine.hashing import (
     verify_chain,
 )
 from engine.map import create_default_map
-from engine.model import RegionType, Unit
+from engine.model import GameState, RegionType, Unit
 from engine.orders import HoldOrder, MoveOrder
 
 
@@ -58,6 +58,18 @@ def test_canonicalize_sorts_dict_keys():
     canonical = canonicalize(state)
     assert list(canonical["regions"].keys()) == sorted(canonical["regions"].keys())
     assert list(canonical["factions"].keys()) == sorted(canonical["factions"].keys())
+
+
+def test_canonical_state_round_trip_preserves_all_domain_models():
+    state = create_default_map()
+    restored = game_state_from_canonical_bytes(canonical_bytes(state))
+    # Canonical encoding intentionally normalizes unit-list order.
+    assert canonical_bytes(restored) == canonical_bytes(state)
+
+
+def test_empty_game_state_round_trips():
+    state = GameState()
+    assert game_state_from_canonical_bytes(canonical_bytes(state)) == state
 
 
 def test_canonical_bytes_round_trips_through_msgpack():

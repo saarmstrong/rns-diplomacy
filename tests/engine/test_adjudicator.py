@@ -40,6 +40,39 @@ from engine.orders import (
 )
 
 # ---------------------------------------------------------------------------
+# Determinism and multi-region interactions
+# ---------------------------------------------------------------------------
+
+
+def test_complex_multi_region_conflict_is_deterministic():
+    state = create_default_map()
+    state = replace(
+        state,
+        units=[
+            Unit(UnitType.ARMY, "vet", "vet_peak"),
+            Unit(UnitType.ARMY, "vet", "vet_shore"),
+            Unit(UnitType.ARMY, "thr", "thr_heart"),
+            Unit(UnitType.ARMY, "thr", "the_crucible"),
+            Unit(UnitType.ARMY, "dsk", "dsk_mire"),
+        ],
+    )
+    orders = {
+        "vet_peak": MoveOrder("vet_peak", "pale_ridge"),
+        "vet_shore": SupportMoveOrder("vet_shore", "vet_peak", "pale_ridge"),
+        "thr_heart": MoveOrder("thr_heart", "pale_ridge"),
+        "the_crucible": SupportMoveOrder("the_crucible", "thr_heart", "pale_ridge"),
+        "dsk_mire": MoveOrder("dsk_mire", "gloomfen"),
+    }
+    first = resolve_movement(state, orders)
+    assert _result_for(first, "vet_peak").moved is False
+    assert _result_for(first, "thr_heart").moved is False
+    assert _result_for(first, "dsk_mire").moved is True
+    # Repeated resolution must be byte-for-byte equivalent at the result
+    # dataclass level, independent of dict iteration or process hash seed.
+    assert all(resolve_movement(state, orders) == first for _ in range(100))
+
+
+# ---------------------------------------------------------------------------
 # Hold / missing / illegal orders
 # ---------------------------------------------------------------------------
 

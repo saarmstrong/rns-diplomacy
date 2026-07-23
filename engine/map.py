@@ -20,6 +20,7 @@ from __future__ import annotations
 from engine.model import (
     Faction,
     GameState,
+    MapGraph,
     Phase,
     Region,
     RegionType,
@@ -32,13 +33,13 @@ from engine.model import (
 # ---------------------------------------------------------------------------
 
 FACTIONS: dict[str, Faction] = {
-    "vet": Faction(id="vet", name="Vethara", color="crimson", abbreviation="VET"),
-    "thr": Faction(id="thr", name="Thornveil", color="emerald", abbreviation="THR"),
-    "dsk": Faction(id="dsk", name="Duskhollow", color="violet", abbreviation="DSK"),
-    "sol": Faction(id="sol", name="Solrath", color="gold", abbreviation="SOL"),
-    "ash": Faction(id="ash", name="Ashenmere", color="amber", abbreviation="ASH"),
-    "kho": Faction(id="kho", name="Kholmari", color="sapphire", abbreviation="KHO"),
-    "irn": Faction(id="irn", name="Ironwake", color="silver", abbreviation="IRN"),
+    "vet": Faction("vet", "Vethara", "crimson", "VET", ("vet_peak", "vet_shore"), ("vet_peak", "vet_shore")),
+    "thr": Faction("thr", "Thornveil", "emerald", "THR", ("thr_heart", "thr_cove"), ("thr_heart", "thr_cove")),
+    "dsk": Faction("dsk", "Duskhollow", "violet", "DSK", ("dsk_mire", "dsk_port"), ("dsk_mire", "dsk_port")),
+    "sol": Faction("sol", "Solrath", "gold", "SOL", ("sol_throne", "sol_coast"), ("sol_throne", "sol_coast")),
+    "ash": Faction("ash", "Ashenmere", "amber", "ASH", ("ash_caldera", "ash_crater"), ("ash_caldera", "ash_crater")),
+    "kho": Faction("kho", "Kholmari", "sapphire", "KHO", ("kho_spire", "kho_harbor"), ("kho_spire", "kho_harbor")),
+    "irn": Faction("irn", "Ironwake", "silver", "IRN", ("irn_citadel", "irn_forge"), ("irn_citadel", "irn_forge")),
 }
 
 # ---------------------------------------------------------------------------
@@ -49,26 +50,26 @@ _R = RegionType
 
 REGIONS: dict[str, Region] = {
     # --- Vethara (north) ---
-    "vet_peak": Region("vet_peak", "Vethara Peak", _R.LAND, is_supply_center=True, abbreviation="VPK"),
-    "vet_shore": Region("vet_shore", "Vethara Shore", _R.COASTAL, is_supply_center=True, abbreviation="VSH"),
+    "vet_peak": Region("vet_peak", "Vethara Peak", _R.LAND, is_supply_center=True, abbreviation="VPK", home_faction="vet"),
+    "vet_shore": Region("vet_shore", "Vethara Shore", _R.COASTAL, is_supply_center=True, abbreviation="VSH", home_faction="vet"),
     # --- Thornveil (northwest) ---
-    "thr_heart": Region("thr_heart", "Thornveil Heartwood", _R.LAND, is_supply_center=True, abbreviation="THH"),
-    "thr_cove": Region("thr_cove", "Briarcove", _R.COASTAL, is_supply_center=True, abbreviation="BCV"),
+    "thr_heart": Region("thr_heart", "Thornveil Heartwood", _R.LAND, is_supply_center=True, abbreviation="THH", home_faction="thr"),
+    "thr_cove": Region("thr_cove", "Briarcove", _R.COASTAL, is_supply_center=True, abbreviation="BCV", home_faction="thr"),
     # --- Duskhollow (west) ---
-    "dsk_mire": Region("dsk_mire", "Duskhollow Mire", _R.LAND, is_supply_center=True, abbreviation="DMR"),
-    "dsk_port": Region("dsk_port", "Lanternport", _R.COASTAL, is_supply_center=True, abbreviation="LPT"),
+    "dsk_mire": Region("dsk_mire", "Duskhollow Mire", _R.LAND, is_supply_center=True, abbreviation="DMR", home_faction="dsk"),
+    "dsk_port": Region("dsk_port", "Lanternport", _R.COASTAL, is_supply_center=True, abbreviation="LPT", home_faction="dsk"),
     # --- Solrath (southwest) ---
-    "sol_throne": Region("sol_throne", "Solrath Throne", _R.LAND, is_supply_center=True, abbreviation="STH"),
-    "sol_coast": Region("sol_coast", "Gilded Shore", _R.COASTAL, is_supply_center=True, abbreviation="GSH"),
+    "sol_throne": Region("sol_throne", "Solrath Throne", _R.LAND, is_supply_center=True, abbreviation="STH", home_faction="sol"),
+    "sol_coast": Region("sol_coast", "Gilded Shore", _R.COASTAL, is_supply_center=True, abbreviation="GSH", home_faction="sol"),
     # --- Ashenmere (southeast) ---
-    "ash_caldera": Region("ash_caldera", "Ashenmere Caldera", _R.COASTAL, is_supply_center=True, abbreviation="ACL"),
-    "ash_crater": Region("ash_crater", "The Cinderlands", _R.LAND, is_supply_center=True, abbreviation="CND"),
+    "ash_caldera": Region("ash_caldera", "Ashenmere Caldera", _R.COASTAL, is_supply_center=True, abbreviation="ACL", home_faction="ash"),
+    "ash_crater": Region("ash_crater", "The Cinderlands", _R.LAND, is_supply_center=True, abbreviation="CND", home_faction="ash"),
     # --- Kholmari (east) ---
-    "kho_spire": Region("kho_spire", "Kholmari Spire", _R.COASTAL, is_supply_center=True, abbreviation="KSP"),
-    "kho_harbor": Region("kho_harbor", "Moonharbor", _R.COASTAL, is_supply_center=True, abbreviation="MHB"),
+    "kho_spire": Region("kho_spire", "Kholmari Spire", _R.COASTAL, is_supply_center=True, abbreviation="KSP", home_faction="kho"),
+    "kho_harbor": Region("kho_harbor", "Moonharbor", _R.COASTAL, is_supply_center=True, abbreviation="MHB", home_faction="kho"),
     # --- Ironwake (central islands) ---
-    "irn_citadel": Region("irn_citadel", "Ironwake Citadel", _R.COASTAL, is_supply_center=True, abbreviation="ICT"),
-    "irn_forge": Region("irn_forge", "The Chain Forge", _R.COASTAL, is_supply_center=True, abbreviation="CFG"),
+    "irn_citadel": Region("irn_citadel", "Ironwake Citadel", _R.COASTAL, is_supply_center=True, abbreviation="ICT", home_faction="irn"),
+    "irn_forge": Region("irn_forge", "The Chain Forge", _R.COASTAL, is_supply_center=True, abbreviation="CFG", home_faction="irn"),
     # --- Contested land / coastal ---
     "pale_ridge": Region("pale_ridge", "Pale Ridge", _R.LAND, abbreviation="PLR"),
     "stormveil": Region("stormveil", "Stormveil", _R.COASTAL, abbreviation="STV"),
@@ -175,6 +176,13 @@ STARTING_SUPPLY_CENTERS: dict[str, str] = {
     "kho_spire": "kho", "kho_harbor": "kho",
     "irn_citadel": "irn", "irn_forge": "irn",
 }
+
+
+def create_default_graph() -> MapGraph:
+    """Return the validated topology of the default map."""
+    graph = MapGraph(dict(REGIONS), {region: frozenset(neighbors) for region, neighbors in ADJACENCY.items()})
+    graph.validate()
+    return graph
 
 
 def create_default_map() -> GameState:

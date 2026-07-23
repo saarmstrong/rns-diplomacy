@@ -15,6 +15,7 @@ in ``coordinator/lobby.py``, ``coordinator/orders.py``, and
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,6 +34,7 @@ CREATE TABLE IF NOT EXISTS matches (
     year INTEGER NOT NULL,
     coordinator_private_key BLOB NOT NULL,
     deadline_expires_at REAL,
+    paused_remaining_seconds REAL,
     created_at REAL NOT NULL
 );
 
@@ -134,10 +136,20 @@ class MatchStore:
     """
 
     def __init__(self, path: str | Path) -> None:
-        self._conn = sqlite3.connect(str(path))
+        database_path = Path(path)
+        database_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        self._conn = sqlite3.connect(str(database_path))
+        # Match databases contain private coordinator keys and player mapping.
+        # sqlite creates the file using the process umask, so explicitly lock
+        # it down after opening (also repairs permissive legacy files).
+        if str(path) != ":memory:":
+            os.chmod(database_path, 0o600)
         self._conn.execute("PRAGMA foreign_keys = ON")
         with self._conn:
             self._conn.executescript(_SCHEMA)
+            columns = {row[1] for row in self._conn.execute("PRAGMA table_info(matches)")}
+            if "paused_remaining_seconds" not in columns:
+                self._conn.execute("ALTER TABLE matches ADD COLUMN paused_remaining_seconds REAL")
 
     def close(self) -> None:
         self._conn.close()
@@ -157,8 +169,8 @@ class MatchStore:
             self._conn.execute(
                 """
                 INSERT INTO matches
-                    (match_id, status, phase, turn, year, coordinator_private_key, deadline_expires_at, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, NULL, ?)
+                    (match_id, status, phase, turn, year, coordinator_private_key, deadline_expires_at, paused_remaining_seconds, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?)
                 """,
                 (
                     match_id,
@@ -210,6 +222,32 @@ class MatchStore:
             )
         if cursor.rowcount == 0:
             raise KeyError(f"no such match: {match_id!r}")
+
+    def pause_deadline(self, match_id: str, *, remaining_seconds: float) -> None:
+        with self._conn:
+            cursor = self._conn.execute(
+                "UPDATE matches SET deadline_expires_at = NULL, paused_remaining_seconds = ? WHERE match_id = ?",
+                (remaining_seconds, match_id),
+            )
+        if cursor.rowcount == 0:
+            raise KeyError(f"no such match: {match_id!r}")
+
+    def resume_deadline(self, match_id: str, *, expires_at: float) -> None:
+        with self._conn:
+            cursor = self._conn.execute(
+                "UPDATE matches SET deadline_expires_at = ?, paused_remaining_seconds = NULL WHERE match_id = ?",
+                (expires_at, match_id),
+            )
+        if cursor.rowcount == 0:
+            raise KeyError(f"no such match: {match_id!r}")
+
+    def get_paused_remaining(self, match_id: str) -> float | None:
+        row = self._conn.execute(
+            "SELECT paused_remaining_seconds FROM matches WHERE match_id = ?", (match_id,)
+        ).fetchone()
+        if row is None:
+            raise KeyError(f"no such match: {match_id!r}")
+        return row[0]
 
     def get_deadline(self, match_id: str) -> float | None:
         row = self._conn.execute(

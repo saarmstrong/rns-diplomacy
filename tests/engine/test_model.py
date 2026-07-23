@@ -18,12 +18,19 @@ def test_region_defaults():
     region = Region(id="a", name="A", region_type=RegionType.LAND)
     assert region.is_supply_center is False
     assert region.abbreviation == ""
+    assert region.home_faction is None
 
 
 def test_faction_is_frozen():
     faction = Faction(id="f", name="F", color="red", abbreviation="F")
     with pytest.raises(Exception):
         faction.name = "G"  # type: ignore[misc]
+
+
+def test_faction_home_metadata_defaults_to_empty_tuples():
+    faction = Faction(id="f", name="F", color="red", abbreviation="F")
+    assert faction.home_regions == ()
+    assert faction.home_centers == ()
 
 
 def test_unit_is_frozen_and_equal_by_value():

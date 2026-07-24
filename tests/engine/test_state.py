@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from engine.map import create_default_map
 from engine.model import Unit, UnitType
+from engine.orders import HoldOrder, MoveOrder
 from engine.state import (
     can_move_to,
     get_legal_moves,
     get_supply_center_count,
     get_unit_at,
     get_units_for_faction,
+    validate_orders,
 )
 
 
@@ -89,3 +91,23 @@ def test_get_legal_moves_only_returns_valid_destinations_sorted():
     assert "north_reach" not in moves  # sea, army can't go there
     assert "pale_ridge" in moves
     assert "stormveil" in moves  # coastal is fine for an army
+
+
+def test_validate_orders_accepts_own_units():
+    state = create_default_map()
+    errors = validate_orders(state, "vet", (HoldOrder(unit_region_id="vet_peak"),))
+    assert errors == ()
+
+
+def test_validate_orders_rejects_other_factions_unit():
+    state = create_default_map()
+    errors = validate_orders(state, "vet", (HoldOrder(unit_region_id="thr_heart"),))
+    assert len(errors) == 1
+    assert "thr_heart" in errors[0]
+
+
+def test_validate_orders_rejects_duplicate_unit_orders():
+    state = create_default_map()
+    orders = (HoldOrder(unit_region_id="vet_peak"), MoveOrder(unit_region_id="vet_peak", destination_id="pale_ridge"))
+    errors = validate_orders(state, "vet", orders)
+    assert any("duplicate" in e for e in errors)

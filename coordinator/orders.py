@@ -24,8 +24,18 @@ from coordinator.persistence import MatchStore
 from engine.hashing import canonicalize, hash_orders
 from engine.model import GameState, Phase
 from engine.orders import Order, order_from_dict
-from engine.state import get_units_for_faction
+from engine.state import validate_orders
 from protocol.messages import OrderCancel, OrderReceipt, OrderState, OrderStatus, OrderSubmit, OrderUpdate
+
+__all__ = [
+    "decode_orders",
+    "encode_orders",
+    "get_effective_orders",
+    "handle_order_cancel",
+    "handle_order_status",
+    "handle_order_submit",
+    "validate_orders",
+]
 
 
 def encode_orders(orders: tuple[Order, ...]) -> bytes:
@@ -36,21 +46,6 @@ def encode_orders(orders: tuple[Order, ...]) -> bytes:
 def decode_orders(blob: bytes) -> tuple[Order, ...]:
     """Reverse of ``encode_orders``."""
     return tuple(order_from_dict(item) for item in msgpack.unpackb(blob, raw=False))
-
-
-def validate_orders(state: GameState, faction_id: str, orders: tuple[Order, ...]) -> tuple[str, ...]:
-    """Structural validation: every order must reference one of the faction's own units, at most once."""
-    owned_regions = {u.region_id for u in get_units_for_faction(state, faction_id)}
-    errors: list[str] = []
-    seen: set[str] = set()
-    for order in orders:
-        region_id = order.unit_region_id
-        if region_id not in owned_regions:
-            errors.append(f"{region_id} is not one of {faction_id}'s units")
-        if region_id in seen:
-            errors.append(f"duplicate order for unit at {region_id}")
-        seen.add(region_id)
-    return tuple(errors)
 
 
 def _rejected_receipt(request: OrderSubmit | OrderUpdate, sequence_number: int, timestamp: float) -> OrderReceipt:

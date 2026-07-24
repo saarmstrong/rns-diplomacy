@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from engine.map import ADJACENCY
 from engine.model import GameState, RegionType, Unit, UnitType
+from engine.orders import Order
 
 
 def get_units_for_faction(state: GameState, faction_id: str) -> list[Unit]:
@@ -58,3 +59,23 @@ def get_legal_moves(state: GameState, unit: Unit) -> list[str]:
     """Return all region IDs the unit can legally move to."""
     neighbors = ADJACENCY.get(unit.region_id, set())
     return [rid for rid in sorted(neighbors) if can_move_to(state, unit, rid)]
+
+
+def validate_orders(state: GameState, faction_id: str, orders: tuple[Order, ...]) -> tuple[str, ...]:
+    """Structural validation shared by the coordinator (before persisting) and the client
+    (before submitting): every order must reference one of the faction's own units, at most
+    once each. Deeper legality (adjacency, unit type, occupied destinations, ...) is
+    deliberately not checked here — the adjudication engine normalizes illegal orders to
+    Hold at resolution time (``engine/adjudicator.py``).
+    """
+    owned_regions = {u.region_id for u in get_units_for_faction(state, faction_id)}
+    errors: list[str] = []
+    seen: set[str] = set()
+    for order in orders:
+        region_id = order.unit_region_id
+        if region_id not in owned_regions:
+            errors.append(f"{region_id} is not one of {faction_id}'s units")
+        if region_id in seen:
+            errors.append(f"duplicate order for unit at {region_id}")
+        seen.add(region_id)
+    return tuple(errors)

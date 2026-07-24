@@ -128,6 +128,10 @@ class MatchCoordinator:
         if self._is_active():
             self.check_deadline()
 
+    def announce(self) -> None:
+        """Broadcast this match's presence so clients listening for announces can discover it."""
+        self.transport.announce(data=self.match_id.encode("utf-8"))
+
     def handle_inbound(self, inbound: InboundMessage) -> None:
         public_key = bytes.fromhex(inbound.sender)
         try:
@@ -165,10 +169,15 @@ class MatchCoordinator:
         self._reply(public_key, response)
 
     def _on_join_request(self, public_key: bytes, message: JoinRequest) -> None:
+        # Reply to the public key carried in the message body, not the transport-derived
+        # sender: on a real Reticulum network, a brand-new player's identity may not be
+        # recallable from the transport layer yet on this first message (see
+        # shared/reticulum_transport.py). The body field is always reliable and is what
+        # lobby.handle_join_request actually persists against.
         response = lobby.handle_join_request(
             self.store, self.match_id, message, sequence_number=self._next_sequence(), timestamp=self._now()
         )
-        self._reply(public_key, response)
+        self._reply(message.player_public_key, response)
 
     def _on_order_submit(self, public_key: bytes, message: OrderSubmit | OrderUpdate) -> None:
         match_state = self._require_match_state()
@@ -303,6 +312,22 @@ class MatchCoordinator:
         deadline = Deadline.after(self.config.movement_phase_seconds, start=current_time)
         self.store.set_deadline(self.match_id, deadline.expires_at)
         self._warned_this_phase = False
+        # Broadcast this seed link too (not just PHASE_START) so a client's hash chain has
+        # no gap between MATCH_START's genesis hash and the first real PHASE_RESULT.
+        self._broadcast_to_all(
+            PhaseResult(
+                sequence_number=self._next_sequence(),
+                timestamp=current_time,
+                match_id=self.match_id,
+                phase=orders_state.phase,
+                turn=orders_state.turn,
+                year=orders_state.year,
+                canonical_state=canonical,
+                state_hash=state_hash,
+                previous_state_hash=previous_hash,
+                signature=signature,
+            )
+        )
         self._broadcast_to_all(
             PhaseStart(
                 sequence_number=self._next_sequence(),

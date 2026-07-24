@@ -72,6 +72,11 @@ class Identity:
     def identity_hash(self) -> bytes:
         return self._rns_identity.hash
 
+    @property
+    def rns_identity(self) -> RNS.Identity:
+        """The wrapped ``RNS.Identity``, for callers that need to talk to RNS/LXMF directly (e.g. ``ReticulumTransport``)."""
+        return self._rns_identity
+
     def public(self) -> PublicIdentity:
         """This identity's public half, shareable with others."""
         return PublicIdentity(self.public_bytes)

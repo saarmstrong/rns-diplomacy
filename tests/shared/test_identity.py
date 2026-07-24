@@ -58,3 +58,9 @@ def test_public_identity_constructed_from_raw_bytes_matches_original() -> None:
     rebuilt_public = PublicIdentity(identity.public_bytes)
     signature = identity.sign(b"message")
     assert rebuilt_public.verify(signature, b"message") is True
+
+
+def test_rns_identity_property_exposes_the_same_keypair() -> None:
+    identity = Identity.generate()
+    assert identity.rns_identity.get_public_key() == identity.public_bytes
+    assert identity.rns_identity.hash == identity.identity_hash

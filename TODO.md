@@ -4,103 +4,103 @@
 
 ### Setup
 
-- [ ] Create pyproject.toml with project metadata and dependencies
-- [ ] Set up directory structure: protocol/, engine/, coordinator/, client/, shared/, tests/, docs/
-- [ ] Initialize git repository
-- [ ] Add .gitignore (Python, SQLite, __pycache__, .rns/)
-- [ ] Configure linting (ruff or flake8) and formatting (black or ruff format)
-- [ ] Add pytest configuration
-- [ ] Pin dependency versions: reticulum, lxmf, msgpack/cbor2, pydantic
+- [x] Create pyproject.toml with project metadata and dependencies
+- [x] Set up directory structure: protocol/, engine/, coordinator/, client/, shared/, tests/, docs/
+- [x] Initialize git repository
+- [x] Add .gitignore (Python, SQLite, __pycache__, .rns/)
+- [x] Configure linting (ruff or flake8) and formatting (black or ruff format)
+- [x] Add pytest configuration
+- [x] Pin dependency versions: reticulum, lxmf, msgpack/cbor2, pydantic
 
 ### Domain Models
 
-- [ ] Define Region model (name, type: land/sea/coastal, is_control_center, home_faction)
-- [ ] Define Faction model (name, home_regions, home_centers)
-- [ ] Define Unit model (type: army/fleet, faction, region)
-- [ ] Define UnitType enum (ARMY, FLEET)
-- [ ] Define MapGraph (regions, adjacency edges, neighbor queries)
-- [ ] Implement adjacency validation (coastal connects to sea and land, armies can't enter sea, etc.)
-- [ ] Define GameState model (units, ownership, control_centers, phase, turn)
+- [x] Define Region model (name, type: land/sea/coastal, is_control_center, home_faction)
+- [x] Define Faction model (name, home_regions, home_centers)
+- [x] Define Unit model (type: army/fleet, faction, region)
+- [x] Define UnitType enum (ARMY, FLEET)
+- [x] Define MapGraph (regions, adjacency edges, neighbor queries)
+- [x] Implement adjacency validation (coastal connects to sea and land, armies can't enter sea, etc.)
+- [x] Define GameState model (units, ownership, control_centers, phase, turn)
 
 ### Map Design
 
-- [ ] Design 25–35 region map with 7 balanced factions
-- [ ] Name all regions (fictional names)
-- [ ] Define all adjacency relationships
-- [ ] Assign 10–15 control centers across the map
-- [ ] Assign home territories and starting units for each faction
-- [ ] Verify map connectivity (no isolated regions)
-- [ ] Write map validation tests (neighbor symmetry, region type consistency)
-- [ ] Test that each faction has a viable starting position
+- [x] Design 25–35 region map with 7 balanced factions
+- [x] Name all regions (fictional names)
+- [x] Define all adjacency relationships
+- [x] Assign 10–15 control centers across the map
+- [x] Assign home territories and starting units for each faction
+- [x] Verify map connectivity (no isolated regions)
+- [x] Write map validation tests (neighbor symmetry, region type consistency)
+- [x] Test that each faction has a viable starting position
 
 ## Phase 2: Game Engine
 
 ### Adjudication — Core Orders
 
-- [ ] Define Order types: Hold, Move, SupportHold, SupportMove
-- [ ] Implement order validation (unit exists, owns unit, valid destination, adjacency)
-- [ ] Implement hold resolution (strength 1 defense)
-- [ ] Implement move resolution (strength comparison)
-- [ ] Implement support hold (adds +1 defensive strength)
-- [ ] Implement support move (adds +1 offensive strength)
+- [x] Define Order types: Hold, Move, SupportHold, SupportMove
+- [x] Implement order validation (unit exists, owns unit, valid destination, adjacency)
+- [x] Implement hold resolution (strength 1 defense)
+- [x] Implement move resolution (strength comparison)
+- [x] Implement support hold (adds +1 defensive strength)
+- [x] Implement support move (adds +1 offensive strength)
 
 ### Adjudication — Conflict Resolution
 
-- [ ] Implement bounce resolution (equal strength → both stay)
-- [ ] Implement head-to-head battle (two units moving into each other)
-- [ ] Implement support cutting (attacking a supporter cancels support)
-- [ ] Implement dislodgement (overpowered unit marked for retreat)
-- [ ] Implement self-dislodgement prevention
-- [ ] Implement circular movement (A→B→C→A all succeed if no opposition)
-- [ ] Handle unordered units (default to hold)
+- [x] Implement bounce resolution (equal strength → both stay)
+- [x] Implement head-to-head battle (two units moving into each other)
+- [x] Implement support cutting (attacking a supporter cancels support)
+- [x] Implement dislodgement (overpowered unit marked for retreat)
+- [x] Implement self-dislodgement prevention
+- [x] Implement circular movement (A→B→C→A all succeed if no opposition)
+- [x] Handle unordered units (default to hold)
 
 ### Adjudication — Retreat & Adjustment
 
-- [ ] Implement retreat phase resolution
-- [ ] Validate retreat destinations (unoccupied, non-contested, adjacent)
-- [ ] Handle retreat conflicts (two units retreat to same region → both disband)
-- [ ] Implement adjustment phase (build/disband)
-- [ ] Validate builds (only in unoccupied home centers)
-- [ ] Enforce disband when units > centers
+- [x] Implement retreat phase resolution
+- [x] Validate retreat destinations (unoccupied, non-contested, adjacent)
+- [x] Handle retreat conflicts (two units retreat to same region → both disband)
+- [x] Implement adjustment phase (build/disband)
+- [x] Validate builds (only in unoccupied home centers)
+- [x] Enforce disband when units > centers
 
 ### Adjudication — Tests
 
-- [ ] Test simple hold
-- [ ] Test simple move to empty region
-- [ ] Test move with equal opposition (bounce)
-- [ ] Test move with support succeeding
-- [ ] Test support hold preventing dislodge
-- [ ] Test support cut by attack
-- [ ] Test head-to-head battle
-- [ ] Test head-to-head with unequal support
-- [ ] Test dislodgement and retreat required
-- [ ] Test circular movement (3-way)
-- [ ] Test self-dislodgement prevention
-- [ ] Test retreat to valid region
-- [ ] Test retreat conflict (both disband)
-- [ ] Test adjustment build
-- [ ] Test adjustment disband
-- [ ] Test complex multi-region conflict scenario
-- [ ] Test determinism (same inputs → identical output, run 100x)
-- [ ] Test all units default to hold when no orders submitted
+- [x] Test simple hold
+- [x] Test simple move to empty region
+- [x] Test move with equal opposition (bounce)
+- [x] Test move with support succeeding
+- [x] Test support hold preventing dislodge
+- [x] Test support cut by attack
+- [x] Test head-to-head battle
+- [x] Test head-to-head with unequal support
+- [x] Test dislodgement and retreat required
+- [x] Test circular movement (3-way)
+- [x] Test self-dislodgement prevention
+- [x] Test retreat to valid region
+- [x] Test retreat conflict (both disband)
+- [x] Test adjustment build
+- [x] Test adjustment disband
+- [x] Test complex multi-region conflict scenario
+- [x] Test determinism (same inputs → identical output, run 100x)
+- [x] Test all units default to hold when no orders submitted
 
 ### Serialization
 
-- [ ] Implement canonical MessagePack/CBOR encoder (sorted keys, canonical integers)
-- [ ] Implement decoder with validation
-- [ ] Verify serialization round-trip for all domain models
-- [ ] Verify deterministic output (serialize → hash → serialize again → same hash)
-- [ ] Implement size limit enforcement
-- [ ] Write serialization tests for edge cases (empty maps, max-size payloads)
+- [x] Implement canonical MessagePack/CBOR encoder (sorted keys, canonical integers)
+- [x] Implement decoder with validation
+- [x] Verify serialization round-trip for all domain models
+- [x] Verify deterministic output (serialize → hash → serialize again → same hash)
+- [x] Implement size limit enforcement
+- [x] Write serialization tests for edge cases (empty maps, max-size payloads)
 
 ### State Hashing
 
-- [ ] Implement state hash function: hash(canonical_serialize(phase_result))
-- [ ] Implement hash chaining (include previous hash in current hash input)
-- [ ] Implement signing integration (sign hash with coordinator identity)
-- [ ] Implement signature verification
-- [ ] Test hash chain construction over multiple phases
-- [ ] Test hash chain verification (detect tampered state)
+- [x] Implement state hash function: hash(canonical_serialize(phase_result))
+- [x] Implement hash chaining (include previous hash in current hash input)
+- [x] Implement signing integration (sign hash with coordinator identity)
+- [x] Implement signature verification
+- [x] Test hash chain construction over multiple phases
+- [x] Test hash chain verification (detect tampered state)
 
 ## Phase 3: Protocol & Transport
 
@@ -148,10 +148,10 @@
 - [x] Define abstract Transport interface (send, receive, announce, discover)
 - [x] Implement InMemoryTransport for testing
 - [x] Test InMemoryTransport message delivery
-- [ ] Implement ReticulumTransport with TCP/IP interface
-- [ ] Set up Reticulum destinations (rns_diplomacy.game, rns_diplomacy.player)
-- [ ] Implement announce for match discovery
-- [ ] Test ReticulumTransport over local TCP/IP
+- [x] Implement ReticulumTransport with TCP/IP interface
+- [ ] Set up Reticulum destinations (rns_diplomacy.game, rns_diplomacy.player) — deliberately not implemented as a separate two-aspect namespace; see shared/reticulum_transport.py's module docstring for why (LXMF fixes its own "lxmf.delivery" destination per identity, and our protocol envelope already self-describes message type/match, so a second namespace split added complexity without adding a real property)
+- [x] Implement announce for match discovery
+- [x] Test ReticulumTransport over local TCP/IP
 
 ## Phase 4: Coordinator
 
@@ -212,43 +212,43 @@
 
 ### Identity Management
 
-- [ ] Generate fresh Reticulum identity per match
-- [ ] Store keypair locally (with appropriate file permissions)
-- [ ] Load existing identity for reconnection to ongoing match
+- [x] Generate fresh Reticulum identity per match
+- [x] Store keypair locally (with appropriate file permissions)
+- [x] Load existing identity for reconnection to ongoing match
 
 ### Match Discovery & Join
 
-- [ ] Listen for coordinator announces
-- [ ] Display discovered matches
-- [ ] Send JOIN_REQUEST with match-scoped identity
-- [ ] Receive and decrypt faction assignment from JOIN_ACCEPTED
-- [ ] Handle JOIN_REJECTED gracefully
+- [x] Listen for coordinator announces
+- [ ] Display discovered matches (CLI rendering — Phase 6)
+- [x] Send JOIN_REQUEST with match-scoped identity
+- [x] Receive and decrypt faction assignment from JOIN_ACCEPTED
+- [x] Handle JOIN_REJECTED gracefully
 
 ### Order Composition & Submission
 
-- [ ] Display current units and valid order options
-- [ ] Interactive order builder (select unit → select order type → select target)
-- [ ] Validate orders locally before submission
-- [ ] Submit orders and track revision number
-- [ ] Receive and store ORDER_RECEIPT
-- [ ] Support order revision and cancellation
-- [ ] Display order status
+- [ ] Display current units and valid order options (CLI rendering — Phase 6; data layer done in client/orders.py)
+- [ ] Interactive order builder (select unit → select order type → select target) (CLI — Phase 6; compose_order() API ready)
+- [x] Validate orders locally before submission
+- [x] Submit orders and track revision number
+- [x] Receive and store ORDER_RECEIPT
+- [x] Support order revision and cancellation
+- [ ] Display order status (CLI rendering — Phase 6)
 
 ### Negotiation
 
-- [ ] Set up LXMF for direct messaging
-- [ ] Send encrypted negotiation messages to factions
-- [ ] Receive and decrypt negotiation messages
-- [ ] Send NEGOTIATION_ACK on receipt
-- [ ] Display negotiation history per faction
+- [x] Set up LXMF for direct messaging (shared/reticulum_transport.py — client.negotiations works unmodified over it, same as everything else built against the abstract Transport)
+- [x] Send encrypted negotiation messages to factions (Reticulum encrypts end-to-end to the recipient identity automatically; no separate application-layer step needed)
+- [x] Receive and decrypt negotiation messages (same — transparent to client/negotiations.py)
+- [x] Send NEGOTIATION_ACK on receipt
+- [ ] Display negotiation history per faction (CLI rendering — Phase 6; client.negotiations.group_by_sender does the grouping)
 
 ### Verification
 
-- [ ] Receive PHASE_RESULT and verify coordinator signature
-- [ ] Verify hash chain continuity
-- [ ] Re-run adjudication locally with same inputs
-- [ ] Compare local result against coordinator result
-- [ ] Alert on mismatch (with evidence)
+- [x] Receive PHASE_RESULT and verify coordinator signature
+- [x] Verify hash chain continuity
+- [x] Re-run adjudication locally with same inputs
+- [x] Compare local result against coordinator result
+- [x] Alert on mismatch (with evidence)
 
 ### Game State Display
 

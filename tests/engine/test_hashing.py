@@ -14,7 +14,7 @@ from engine.hashing import (
     verify_chain,
 )
 from engine.map import create_default_map
-from engine.model import RegionType, Unit
+from engine.model import GameState, RegionType, Unit
 from engine.orders import HoldOrder, MoveOrder
 
 
@@ -111,6 +111,16 @@ def test_hash_orders_changes_when_orders_differ():
 
 def test_hash_orders_of_empty_set_is_stable():
     assert hash_orders(()) == hash_orders([])
+
+
+def test_canonical_bytes_round_trips_for_an_empty_state():
+    empty = GameState()
+    reconstructed = game_state_from_canonical_bytes(canonical_bytes(empty))
+    assert reconstructed.regions == {}
+    assert reconstructed.factions == {}
+    assert reconstructed.units == []
+    assert reconstructed.supply_centers == {}
+    assert hash_game_state(reconstructed) == hash_game_state(empty)
 
 
 def test_game_state_from_canonical_bytes_round_trips_semantically():

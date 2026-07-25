@@ -53,6 +53,7 @@ from protocol.messages import (
     DrawVote,
     ErrorMessage,
     GameInfo,
+    JoinRejected,
     JoinRequest,
     MatchEnd,
     MatchStatus,
@@ -68,8 +69,19 @@ from protocol.messages import (
 from protocol.validation import validate_message
 from shared import time as shared_time
 from shared.identity import Identity
+from shared.logging import get_logger
 from shared.time import Deadline
 from shared.transport import InboundMessage, Transport
+
+log = get_logger("coordinator.match")
+
+# Rate limit on JOIN_REQUEST processing: at most this many attempts per sender
+# public key within the window, to bound the cost of a spam/DoS attempt before
+# it ever reaches lobby.handle_join_request. In-memory only (not persisted) —
+# a coordinator restart resets it, which is an acceptable tradeoff for a
+# throttle rather than a hard security boundary.
+_JOIN_RATE_LIMIT_WINDOW_SECONDS = 60.0
+_JOIN_RATE_LIMIT_MAX_ATTEMPTS = 5
 
 
 @dataclass(frozen=True)
@@ -94,6 +106,7 @@ class MatchCoordinator:
         self.config = config or MatchConfig()
         self._sequence_number = 0
         self._warned_this_phase = False
+        self._recent_join_attempts: dict[bytes, list[float]] = {}
         self._handlers = {
             DiscoverGame: self._on_discover_game,
             JoinRequest: self._on_join_request,
@@ -138,6 +151,7 @@ class MatchCoordinator:
             message = decode_message(inbound.data)
             validate_message(message)
         except (DecodingError, ValidationError) as exc:
+            log.warning("rejected malformed message from %s: %s", inbound.sender[:16], exc)
             self._reply(
                 public_key,
                 ErrorMessage(
@@ -148,6 +162,22 @@ class MatchCoordinator:
                 ),
             )
             return
+
+        # Replay protection: reject a sequence number that isn't strictly greater
+        # than the last one seen from this sender. JOIN_REQUEST is tracked against
+        # the body's player_public_key rather than the transport-derived sender —
+        # same reasoning as _on_join_request's reply routing (see its docstring).
+        replay_key = message.player_public_key if isinstance(message, JoinRequest) else public_key
+        last_seen = self.store.get_last_sequence_number(self.match_id, replay_key)
+        if last_seen is not None and message.sequence_number <= last_seen:
+            log.warning(
+                "rejected replayed/duplicate message (seq=%s, last seen=%s) from %s",
+                message.sequence_number,
+                last_seen,
+                replay_key.hex()[:16],
+            )
+            return
+        self.store.record_sequence_number(self.match_id, replay_key, message.sequence_number)
 
         handler = self._handlers.get(type(message))
         if handler is not None:
@@ -169,14 +199,29 @@ class MatchCoordinator:
         self._reply(public_key, response)
 
     def _on_join_request(self, public_key: bytes, message: JoinRequest) -> None:
+        now = self._now()
+        attempts = self._recent_join_attempts.setdefault(message.player_public_key, [])
+        attempts[:] = [t for t in attempts if now - t < _JOIN_RATE_LIMIT_WINDOW_SECONDS]
+        if len(attempts) >= _JOIN_RATE_LIMIT_MAX_ATTEMPTS:
+            log.warning(
+                "rate-limited JOIN_REQUEST from %s (%d attempts in the last %.0fs)",
+                message.player_public_key.hex()[:16],
+                len(attempts),
+                _JOIN_RATE_LIMIT_WINDOW_SECONDS,
+            )
+            return
+        attempts.append(now)
+
         # Reply to the public key carried in the message body, not the transport-derived
         # sender: on a real Reticulum network, a brand-new player's identity may not be
         # recallable from the transport layer yet on this first message (see
         # shared/reticulum_transport.py). The body field is always reliable and is what
         # lobby.handle_join_request actually persists against.
         response = lobby.handle_join_request(
-            self.store, self.match_id, message, sequence_number=self._next_sequence(), timestamp=self._now()
+            self.store, self.match_id, message, sequence_number=self._next_sequence(), timestamp=now
         )
+        if isinstance(response, JoinRejected):
+            log.warning("rejected JOIN_REQUEST from %s: %s", message.player_public_key.hex()[:16], response.reason)
         self._reply(message.player_public_key, response)
 
     def _on_order_submit(self, public_key: bytes, message: OrderSubmit | OrderUpdate) -> None:
@@ -339,6 +384,44 @@ class MatchCoordinator:
                 deadline=deadline.expires_at,
             )
         )
+
+    def end_match(self, reason: str, *, now: float | None = None) -> None:
+        """Operator action: force-end the match immediately, broadcasting MATCH_END."""
+        current_time = now if now is not None else self._now()
+        match_state = self._require_match_state()
+        new_state = phases.end_match(match_state)
+        self.store.save_match_state(self.match_id, new_state)
+        latest = self.store.get_latest_phase_result(self.match_id)
+        self._broadcast_to_all(
+            MatchEnd(
+                sequence_number=self._next_sequence(),
+                timestamp=current_time,
+                match_id=self.match_id,
+                reason=reason,
+                winner=None,
+                final_state_hash=latest.state_hash if latest else None,
+            )
+        )
+
+    def pause(self, *, now: float | None = None) -> None:
+        """Freeze the current phase's deadline, remembering how much time was left."""
+        current_time = now if now is not None else self._now()
+        expires_at = self.store.get_deadline(self.match_id)
+        if expires_at is None:
+            return  # no active deadline (already paused, or not in a deadline-bound phase)
+        remaining = max(expires_at - current_time, 0.0)
+        self.store.set_paused_remaining_seconds(self.match_id, remaining)
+        self.store.set_deadline(self.match_id, None)
+
+    def resume(self, *, now: float | None = None) -> None:
+        """Restore a paused deadline, counting down from however much time was left."""
+        current_time = now if now is not None else self._now()
+        remaining = self.store.get_paused_remaining_seconds(self.match_id)
+        if remaining is None:
+            return  # not paused
+        self.store.set_deadline(self.match_id, current_time + remaining)
+        self.store.set_paused_remaining_seconds(self.match_id, None)
+        self._warned_this_phase = False
 
     def check_deadline(self, *, now: float | None = None) -> None:
         """Send a deadline warning if due, or advance the phase once the deadline has passed."""

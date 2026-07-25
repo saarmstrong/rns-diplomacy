@@ -96,7 +96,7 @@ def test_verify_hash_matches_state_false_when_canonical_state_tampered(coordinat
 def test_verify_history_ok_for_honest_chain(coordinator, network):
     client = _run_one_all_hold_turn(coordinator, network)
     coordinator_public = coordinator.store.load_coordinator_identity("match-1").public()
-    report = verify_history(coordinator_public, client.match_start, client.phase_results)
+    report = verify_history(coordinator_public, client.phase_results, match_start=client.match_start)
     assert report.ok is True
     assert report.issues == ()
     assert report.checked == len(client.phase_results) + 1
@@ -109,7 +109,7 @@ def test_verify_history_detects_tampered_state(coordinator, network):
     tampered_results = list(client.phase_results)
     tampered_results[-1] = replace(tampered_results[-1], canonical_state=b"forged")
 
-    report = verify_history(coordinator_public, client.match_start, tampered_results)
+    report = verify_history(coordinator_public, tampered_results, match_start=client.match_start)
     assert report.ok is False
     assert any("state_hash does not match" in issue.reason for issue in report.issues)
 
@@ -121,7 +121,7 @@ def test_verify_history_detects_broken_chain_link(coordinator, network):
     tampered_results = list(client.phase_results)
     tampered_results[-1] = replace(tampered_results[-1], previous_state_hash="0" * 64)
 
-    report = verify_history(coordinator_public, client.match_start, tampered_results)
+    report = verify_history(coordinator_public, tampered_results, match_start=client.match_start)
     assert report.ok is False
     assert any("hash chain broken" in issue.reason for issue in report.issues)
 
@@ -135,9 +135,43 @@ def test_verify_history_detects_forged_signature(coordinator, network):
     tampered_results = list(client.phase_results)
     tampered_results[-1] = forged
 
-    report = verify_history(coordinator_public, client.match_start, tampered_results)
+    report = verify_history(coordinator_public, tampered_results, match_start=client.match_start)
     assert report.ok is False
     assert any("signature invalid" in issue.reason for issue in report.issues)
+
+
+def test_verify_history_without_match_start_verifies_observed_segment(coordinator, network):
+    """A client that never observed the live MATCH_START (e.g. joined in an earlier,
+    separate CLI invocation) can still verify whatever it does have."""
+    client = _run_one_all_hold_turn(coordinator, network)
+    coordinator_public = coordinator.store.load_coordinator_identity("match-1").public()
+
+    report = verify_history(coordinator_public, client.phase_results, match_start=None)
+    assert report.ok is True
+    assert report.checked == len(client.phase_results)
+
+
+def test_verify_history_without_match_start_detects_tampering_in_observed_segment(coordinator, network):
+    client = _run_one_all_hold_turn(coordinator, network)
+    coordinator_public = coordinator.store.load_coordinator_identity("match-1").public()
+
+    tampered_results = list(client.phase_results)
+    tampered_results[-1] = replace(tampered_results[-1], canonical_state=b"forged")
+
+    report = verify_history(coordinator_public, tampered_results, match_start=None)
+    assert report.ok is False
+    assert any("state_hash does not match" in issue.reason for issue in report.issues)
+
+
+def test_verify_history_without_match_start_does_not_falsely_flag_the_first_entrys_previous_hash(coordinator, network):
+    """Without a genesis to compare against, the first observed entry's previous_state_hash
+    (which legitimately chains from something the client never saw) must not be flagged."""
+    client = _run_one_all_hold_turn(coordinator, network)
+    coordinator_public = coordinator.store.load_coordinator_identity("match-1").public()
+
+    assert client.phase_results[0].previous_state_hash is not None  # chains from a real prior link
+    report = verify_history(coordinator_public, client.phase_results, match_start=None)
+    assert report.ok is True
 
 
 def test_reproduce_and_compare_matches_for_correct_all_hold_turn(coordinator, network):

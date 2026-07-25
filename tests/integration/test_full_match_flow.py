@@ -93,7 +93,7 @@ def test_full_seven_client_match_flow(tmp_path):
         for client in clients:
             assert client.turn == 2
             assert client.phase is Phase.ORDERS
-            report = verify_history(coordinator_public, client.match_start, client.phase_results)
+            report = verify_history(coordinator_public, client.phase_results, match_start=client.match_start)
             assert report.ok is True, report.issues
 
         # --- Draw proposal and unanimous vote ends the match ------------------

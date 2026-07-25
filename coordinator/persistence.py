@@ -15,6 +15,7 @@ in ``coordinator/lobby.py``, ``coordinator/orders.py``, and
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,6 +34,7 @@ CREATE TABLE IF NOT EXISTS matches (
     year INTEGER NOT NULL,
     coordinator_private_key BLOB NOT NULL,
     deadline_expires_at REAL,
+    paused_remaining_seconds REAL,
     created_at REAL NOT NULL
 );
 
@@ -78,6 +80,22 @@ CREATE TABLE IF NOT EXISTS draw_votes (
     voted_at REAL NOT NULL,
     PRIMARY KEY (match_id, turn, public_key)
 );
+
+CREATE TABLE IF NOT EXISTS admin_commands (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    match_id TEXT NOT NULL REFERENCES matches(match_id),
+    command TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    created_at REAL NOT NULL,
+    processed_at REAL
+);
+
+CREATE TABLE IF NOT EXISTS sender_sequence_numbers (
+    match_id TEXT NOT NULL REFERENCES matches(match_id),
+    public_key BLOB NOT NULL,
+    last_sequence_number INTEGER NOT NULL,
+    PRIMARY KEY (match_id, public_key)
+);
 """
 
 
@@ -88,6 +106,23 @@ class MatchRecord:
     match_id: str
     state: MatchState
     created_at: float
+
+
+@dataclass(frozen=True)
+class AdminCommandRecord:
+    """An operator action queued for the running ``serve`` process to execute.
+
+    Only ``serve`` holds the coordinator's live network connection, so
+    operator commands issued from separate short-lived CLI invocations
+    (start/advance-phase/pause/resume/end) can't broadcast directly —
+    they queue a command here instead, which serve's loop picks up.
+    """
+
+    id: int
+    command: str
+    payload: str
+    created_at: float
+    processed_at: float | None
 
 
 @dataclass(frozen=True)
@@ -138,6 +173,11 @@ class MatchStore:
         self._conn.execute("PRAGMA foreign_keys = ON")
         with self._conn:
             self._conn.executescript(_SCHEMA)
+        # The database holds the coordinator's signing private key and all match
+        # state — restrict it to the owner. Skipped for ":memory:" and other
+        # non-path targets, which have no filesystem permissions to set.
+        if str(path) != ":memory:" and os.path.exists(path):
+            os.chmod(path, 0o600)
 
     def close(self) -> None:
         self._conn.close()
@@ -214,6 +254,23 @@ class MatchStore:
     def get_deadline(self, match_id: str) -> float | None:
         row = self._conn.execute(
             "SELECT deadline_expires_at FROM matches WHERE match_id = ?", (match_id,)
+        ).fetchone()
+        if row is None:
+            raise KeyError(f"no such match: {match_id!r}")
+        return row[0]
+
+    def set_paused_remaining_seconds(self, match_id: str, remaining_seconds: float | None) -> None:
+        with self._conn:
+            cursor = self._conn.execute(
+                "UPDATE matches SET paused_remaining_seconds = ? WHERE match_id = ?",
+                (remaining_seconds, match_id),
+            )
+        if cursor.rowcount == 0:
+            raise KeyError(f"no such match: {match_id!r}")
+
+    def get_paused_remaining_seconds(self, match_id: str) -> float | None:
+        row = self._conn.execute(
+            "SELECT paused_remaining_seconds FROM matches WHERE match_id = ?", (match_id,)
         ).fetchone()
         if row is None:
             raise KeyError(f"no such match: {match_id!r}")
@@ -420,3 +477,56 @@ class MatchStore:
             (match_id, turn),
         ).fetchall()
         return {public_key: bool(vote) for public_key, vote in rows}
+
+    # --- Admin command queue -----------------------------------------
+
+    def enqueue_admin_command(self, match_id: str, command: str, payload: str, *, created_at: float) -> int:
+        with self._conn:
+            cursor = self._conn.execute(
+                "INSERT INTO admin_commands (match_id, command, payload, created_at) VALUES (?, ?, ?, ?)",
+                (match_id, command, payload, created_at),
+            )
+        return cursor.lastrowid
+
+    def get_pending_admin_commands(self, match_id: str) -> list[AdminCommandRecord]:
+        rows = self._conn.execute(
+            """
+            SELECT id, command, payload, created_at, processed_at FROM admin_commands
+            WHERE match_id = ? AND processed_at IS NULL ORDER BY id
+            """,
+            (match_id,),
+        ).fetchall()
+        return [AdminCommandRecord(*row) for row in rows]
+
+    def get_admin_command(self, command_id: int) -> AdminCommandRecord | None:
+        row = self._conn.execute(
+            "SELECT id, command, payload, created_at, processed_at FROM admin_commands WHERE id = ?",
+            (command_id,),
+        ).fetchone()
+        return AdminCommandRecord(*row) if row is not None else None
+
+    def mark_admin_command_processed(self, command_id: int, *, processed_at: float) -> None:
+        with self._conn:
+            self._conn.execute(
+                "UPDATE admin_commands SET processed_at = ? WHERE id = ?", (processed_at, command_id)
+            )
+
+    # --- Replay protection ------------------------------------------------
+
+    def get_last_sequence_number(self, match_id: str, public_key: bytes) -> int | None:
+        row = self._conn.execute(
+            "SELECT last_sequence_number FROM sender_sequence_numbers WHERE match_id = ? AND public_key = ?",
+            (match_id, public_key),
+        ).fetchone()
+        return row[0] if row is not None else None
+
+    def record_sequence_number(self, match_id: str, public_key: bytes, sequence_number: int) -> None:
+        with self._conn:
+            self._conn.execute(
+                """
+                INSERT INTO sender_sequence_numbers (match_id, public_key, last_sequence_number)
+                VALUES (?, ?, ?)
+                ON CONFLICT (match_id, public_key) DO UPDATE SET last_sequence_number = excluded.last_sequence_number
+                """,
+                (match_id, public_key, sequence_number),
+            )

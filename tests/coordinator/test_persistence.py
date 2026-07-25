@@ -79,6 +79,17 @@ def test_deadline_round_trip(store: MatchStore) -> None:
     assert store.get_deadline("match-1") is None
 
 
+def test_paused_remaining_seconds_round_trip(store: MatchStore) -> None:
+    store.create_match("match-1", Identity.generate(), created_at=1000.0)
+    assert store.get_paused_remaining_seconds("match-1") is None
+
+    store.set_paused_remaining_seconds("match-1", 3600.0)
+    assert store.get_paused_remaining_seconds("match-1") == 3600.0
+
+    store.set_paused_remaining_seconds("match-1", None)
+    assert store.get_paused_remaining_seconds("match-1") is None
+
+
 def test_add_and_list_players(store: MatchStore) -> None:
     store.create_match("match-1", Identity.generate(), created_at=1000.0)
     alice = Identity.generate().public_bytes
@@ -290,9 +301,80 @@ def test_restart_recovery_reloads_full_state_from_disk(db_path) -> None:
         recovered.close()
 
 
+def test_admin_command_queue_round_trip(store: MatchStore) -> None:
+    store.create_match("match-1", Identity.generate(), created_at=1000.0)
+    assert store.get_pending_admin_commands("match-1") == []
+
+    command_id = store.enqueue_admin_command("match-1", "start", "{}", created_at=10.0)
+    pending = store.get_pending_admin_commands("match-1")
+    assert len(pending) == 1
+    assert pending[0].id == command_id
+    assert pending[0].command == "start"
+    assert pending[0].payload == "{}"
+    assert pending[0].processed_at is None
+
+    store.mark_admin_command_processed(command_id, processed_at=11.0)
+    assert store.get_pending_admin_commands("match-1") == []
+    record = store.get_admin_command(command_id)
+    assert record.processed_at == 11.0
+
+
+def test_admin_commands_are_returned_in_enqueue_order(store: MatchStore) -> None:
+    store.create_match("match-1", Identity.generate(), created_at=1000.0)
+    store.enqueue_admin_command("match-1", "pause", "{}", created_at=10.0)
+    store.enqueue_admin_command("match-1", "resume", "{}", created_at=11.0)
+
+    pending = store.get_pending_admin_commands("match-1")
+    assert [p.command for p in pending] == ["pause", "resume"]
+
+
+def test_get_admin_command_unknown_id_returns_none(store: MatchStore) -> None:
+    store.create_match("match-1", Identity.generate(), created_at=1000.0)
+    assert store.get_admin_command(999) is None
+
+
 def test_context_manager_closes_connection(tmp_path) -> None:
     db_path = tmp_path / "match.sqlite3"
     with MatchStore(db_path) as store:
         store.create_match("match-1", Identity.generate(), created_at=1000.0)
     with pytest.raises(sqlite3.ProgrammingError):
         store.get_match("match-1")
+
+
+def test_sqlite_file_is_created_with_owner_only_permissions(tmp_path) -> None:
+    import stat
+
+    db_path = tmp_path / "match.sqlite3"
+    store = MatchStore(db_path)
+    try:
+        mode = stat.S_IMODE(db_path.stat().st_mode)
+        assert mode == 0o600
+    finally:
+        store.close()
+
+
+def test_sequence_number_tracking_round_trip(store: MatchStore) -> None:
+    store.create_match("match-1", Identity.generate(), created_at=1000.0)
+    alice = Identity.generate().public_bytes
+
+    assert store.get_last_sequence_number("match-1", alice) is None
+
+    store.record_sequence_number("match-1", alice, 1)
+    assert store.get_last_sequence_number("match-1", alice) == 1
+
+    store.record_sequence_number("match-1", alice, 5)
+    assert store.get_last_sequence_number("match-1", alice) == 5
+
+    # Overwrites rather than duplicating.
+    store.record_sequence_number("match-1", alice, 3)
+    assert store.get_last_sequence_number("match-1", alice) == 3
+
+
+def test_sequence_number_tracking_is_per_sender(store: MatchStore) -> None:
+    store.create_match("match-1", Identity.generate(), created_at=1000.0)
+    alice = Identity.generate().public_bytes
+    bob = Identity.generate().public_bytes
+
+    store.record_sequence_number("match-1", alice, 10)
+    assert store.get_last_sequence_number("match-1", bob) is None
+    assert store.get_last_sequence_number("match-1", alice) == 10

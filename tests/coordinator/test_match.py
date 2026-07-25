@@ -8,7 +8,7 @@ import pytest
 
 from coordinator.match import MatchCoordinator
 from coordinator.persistence import MatchStore
-from coordinator.phases import MatchState
+from coordinator.phases import InvalidTransitionError, MatchState
 from engine.hashing import (
     game_state_from_canonical_bytes,
     verify_chain,
@@ -22,6 +22,7 @@ from protocol.messages import (
     GameInfo,
     JoinAccepted,
     JoinRequest,
+    MatchEnd,
     MatchStart,
     MatchStatus,
     OrderReceipt,
@@ -194,6 +195,55 @@ def test_full_turn_with_all_holds_produces_signed_chained_result(coordinator, ne
     assert saw_phase_result
 
 
+def test_replay_protection_rejects_non_increasing_sequence_number(coordinator, network):
+    client = Client(network)
+    request = JoinRequest(
+        sequence_number=5, timestamp=100.0, match_id="match-1", player_public_key=client.identity.public_bytes
+    )
+    client.send(request)
+    coordinator.poll()
+    [first_response] = client.receive()
+    assert isinstance(first_response, JoinAccepted)
+
+    # Resend with a sequence number that doesn't strictly increase — should be silently
+    # dropped, not processed a second time.
+    replay = JoinRequest(
+        sequence_number=5, timestamp=101.0, match_id="match-1", player_public_key=client.identity.public_bytes,
+        display_name="ShouldBeIgnored",
+    )
+    client.send(replay)
+    coordinator.poll()
+    assert client.receive() == []
+
+
+def test_replay_protection_is_independent_per_sender(coordinator, network):
+    alice, bob = Client(network), Client(network)
+    for c in (alice, bob):
+        c.send(JoinRequest(sequence_number=1, timestamp=100.0, match_id="match-1", player_public_key=c.identity.public_bytes))
+        coordinator.poll()
+        [response] = c.receive()
+        assert isinstance(response, JoinAccepted)
+
+
+def test_join_request_rate_limiting_drops_excess_attempts(coordinator, network):
+    client = Client(network)
+    responded = 0
+    for i in range(8):
+        client.send(
+            JoinRequest(
+                sequence_number=i + 1, timestamp=100.0 + i, match_id="match-1",
+                player_public_key=client.identity.public_bytes,
+            )
+        )
+        coordinator.poll()
+        if client.receive():
+            responded += 1
+
+    # Re-joining with the same key is idempotent (JOIN_ACCEPTED again), so the first
+    # _JOIN_RATE_LIMIT_MAX_ATTEMPTS (5) all get a response; the rest are dropped silently.
+    assert responded == 5
+
+
 def test_manual_advance_bypasses_deadline(coordinator, network):
     clients = _join_all(coordinator, network)
     coordinator.start_match()
@@ -204,6 +254,77 @@ def test_manual_advance_bypasses_deadline(coordinator, network):
     coordinator.advance_phase(now=100.0)  # far before the real deadline — manual/dev-mode advance
     deadline_after = coordinator.store.get_deadline("match-1")
     assert deadline_after != deadline_before
+
+
+def test_end_match_broadcasts_match_end_and_completes(coordinator, network):
+    clients = _join_all(coordinator, network)
+    coordinator.start_match()
+    for client in clients:
+        client.receive()
+
+    coordinator.end_match("operator abandoned the match", now=500.0)
+
+    record = coordinator.store.get_match("match-1")
+    assert record.state.status is MatchStatus.COMPLETED
+
+    for client in clients:
+        messages = client.receive()
+        ends = [m for m in messages if isinstance(m, MatchEnd)]
+        assert len(ends) == 1
+        assert ends[0].reason == "operator abandoned the match"
+        assert ends[0].final_state_hash is not None
+
+
+def test_end_match_raises_when_not_active(coordinator, network):
+    with pytest.raises(InvalidTransitionError):
+        coordinator.end_match("too early")
+
+
+def test_pause_freezes_deadline_and_resume_restores_remaining_time(coordinator, network):
+    clients = _join_all(coordinator, network)
+    coordinator.start_match()
+    for client in clients:
+        client.receive()
+
+    expires_at = coordinator.store.get_deadline("match-1")
+    pause_time = expires_at - 1000.0
+    coordinator.pause(now=pause_time)
+
+    assert coordinator.store.get_deadline("match-1") is None
+    assert coordinator.store.get_paused_remaining_seconds("match-1") == 1000.0
+
+    # Advancing far past the original deadline while paused does nothing.
+    coordinator.check_deadline(now=expires_at + 500.0)
+    record = coordinator.store.get_match("match-1")
+    assert record.state.turn == 1
+
+    resume_time = pause_time + 100.0
+    coordinator.resume(now=resume_time)
+    assert coordinator.store.get_paused_remaining_seconds("match-1") is None
+    assert coordinator.store.get_deadline("match-1") == resume_time + 1000.0
+
+
+def test_pause_is_a_noop_without_an_active_deadline(coordinator, network):
+    clients = _join_all(coordinator, network)
+    coordinator.start_match()
+    for client in clients:
+        client.receive()
+
+    coordinator.pause(now=100.0)
+    assert coordinator.store.get_paused_remaining_seconds("match-1") is not None
+    coordinator.pause(now=200.0)  # already paused — should not overwrite with 0
+    assert coordinator.store.get_paused_remaining_seconds("match-1") > 0
+
+
+def test_resume_is_a_noop_when_not_paused(coordinator, network):
+    clients = _join_all(coordinator, network)
+    coordinator.start_match()
+    for client in clients:
+        client.receive()
+
+    expires_at = coordinator.store.get_deadline("match-1")
+    coordinator.resume(now=100.0)
+    assert coordinator.store.get_deadline("match-1") == expires_at
 
 
 def test_check_deadline_advances_once_expired(coordinator, network):

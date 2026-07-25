@@ -69,24 +69,44 @@ def verify_hash_matches_state(result: PhaseResult | MatchStart) -> bool:
     return hash_game_state_hex(state, previous_hash=previous) == result.state_hash
 
 
-def verify_history(coordinator_public_key: PublicIdentity, match_start: MatchStart, phase_results: list[PhaseResult]) -> VerificationReport:
-    """Verify every link a client has actually received: MATCH_START plus every PHASE_RESULT since.
+def verify_history(
+    coordinator_public_key: PublicIdentity,
+    phase_results: list[PhaseResult],
+    *,
+    match_start: MatchStart | None = None,
+) -> VerificationReport:
+    """Verify every link a client has actually received.
 
-    For each link, checks the coordinator's signature, that the claimed
-    hash really matches the claimed state, and that it correctly chains
-    from the previous link's hash. Returns every failure found — not just
-    the first — so a dispute has full evidence.
+    If ``match_start`` is given, it anchors the chain at genesis: its
+    signature and hash are checked, and the first ``phase_results`` entry
+    must chain from it. If not — e.g. a client that joined in one session
+    and only started polling in a later one, never observing the live
+    MATCH_START broadcast — verification instead starts from whatever the
+    first ``phase_results`` entry is: its signature and hash are still
+    checked, just not that it chains from a known genesis (there's
+    nothing locally to check that against). This proves everything the
+    client actually observed is internally consistent and correctly
+    signed; it can't prove history that predates what it has. Every
+    subsequent entry is always checked against the one before it. Returns
+    every failure found, not just the first, so a dispute has full
+    evidence.
     """
     issues: list[VerificationIssue] = []
+    previous_hash: str | None
+    checked = 0
 
-    if not verify_signature(coordinator_public_key, match_start):
-        issues.append(VerificationIssue(index=0, turn=0, phase=Phase.DIPLOMACY, reason="MATCH_START signature invalid"))
-    if not verify_hash_matches_state(match_start):
-        issues.append(
-            VerificationIssue(index=0, turn=0, phase=Phase.DIPLOMACY, reason="MATCH_START state_hash does not match canonical_state")
-        )
+    if match_start is not None:
+        if not verify_signature(coordinator_public_key, match_start):
+            issues.append(VerificationIssue(index=0, turn=0, phase=Phase.DIPLOMACY, reason="MATCH_START signature invalid"))
+        if not verify_hash_matches_state(match_start):
+            issues.append(
+                VerificationIssue(index=0, turn=0, phase=Phase.DIPLOMACY, reason="MATCH_START state_hash does not match canonical_state")
+            )
+        previous_hash = match_start.state_hash
+        checked = 1
+    else:
+        previous_hash = None
 
-    previous_hash = match_start.state_hash
     for i, result in enumerate(phase_results, start=1):
         if not verify_signature(coordinator_public_key, result):
             issues.append(VerificationIssue(index=i, turn=result.turn, phase=result.phase, reason="signature invalid"))
@@ -96,7 +116,7 @@ def verify_history(coordinator_public_key: PublicIdentity, match_start: MatchSta
                     index=i, turn=result.turn, phase=result.phase, reason="state_hash does not match canonical_state"
                 )
             )
-        if result.previous_state_hash != previous_hash:
+        if previous_hash is not None and result.previous_state_hash != previous_hash:
             issues.append(
                 VerificationIssue(
                     index=i,
@@ -106,8 +126,9 @@ def verify_history(coordinator_public_key: PublicIdentity, match_start: MatchSta
                 )
             )
         previous_hash = result.state_hash
+        checked += 1
 
-    return VerificationReport(ok=not issues, checked=len(phase_results) + 1, issues=tuple(issues))
+    return VerificationReport(ok=not issues, checked=checked, issues=tuple(issues))
 
 
 def reproduce_and_compare(

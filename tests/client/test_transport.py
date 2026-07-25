@@ -46,6 +46,48 @@ def _join_all(coordinator, network, n=7) -> list[PlayerClient]:
     return clients
 
 
+def test_reconnecting_with_initial_sequence_number_avoids_replay_rejection(coordinator, network):
+    """Simulates what client/cli.py does: a fresh process, fresh PlayerClient, acting as
+    the same player as an earlier one — must carry the sequence counter forward or the
+    coordinator's persistent replay protection rejects everything after the first message."""
+    identity = create_identity()
+    first_transport = InMemoryTransport(identity.public_bytes.hex(), network)
+    first_client = PlayerClient(identity, first_transport, "coordinator", "match-1")
+    first_client.join(display_name="Ambassador")
+    coordinator.poll()
+    first_client.poll()
+    assert first_client.faction_name is not None
+    last_sequence = first_client.sequence_number
+
+    # A brand-new PlayerClient (as a fresh CLI invocation would construct), seeded with
+    # the previous one's last sequence number.
+    second_transport = InMemoryTransport(identity.public_bytes.hex(), network)
+    second_client = PlayerClient(
+        identity, second_transport, "coordinator", "match-1", initial_sequence_number=last_sequence
+    )
+    second_client.request_state()
+    coordinator.poll()
+    processed = second_client.poll()
+    assert len(processed) == 1  # got a real STATE_RESPONSE (or ERROR), not silently dropped
+
+
+def test_reconnecting_without_initial_sequence_number_is_rejected_as_a_replay(coordinator, network):
+    """The failure mode the fix above prevents."""
+    identity = create_identity()
+    first_transport = InMemoryTransport(identity.public_bytes.hex(), network)
+    first_client = PlayerClient(identity, first_transport, "coordinator", "match-1")
+    first_client.join(display_name="Ambassador")
+    coordinator.poll()
+    first_client.poll()
+
+    second_transport = InMemoryTransport(identity.public_bytes.hex(), network)
+    second_client = PlayerClient(identity, second_transport, "coordinator", "match-1")  # starts back at 0
+    second_client.request_state()
+    coordinator.poll()
+    processed = second_client.poll()
+    assert processed == []  # silently dropped as a replay
+
+
 def test_discover_populates_game_info(coordinator, network):
     client = _make_client(network)
     client.discover()
@@ -64,7 +106,7 @@ def test_listen_for_announces_finds_an_announced_match(coordinator, network):
     coordinator.announce()
     found = listen_for_announces(scout_transport)
 
-    assert found == ["match-1"]
+    assert found == [("coordinator", "match-1")]
     # A second poll with no new announcement finds nothing further.
     assert listen_for_announces(scout_transport) == []
 

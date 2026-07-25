@@ -49,27 +49,42 @@ from shared.time import now as shared_now
 from shared.transport import Transport
 
 
-def listen_for_announces(transport: Transport) -> list[str]:
+def listen_for_announces(transport: Transport) -> list[tuple[str, str]]:
     """Check for new match announcements since the last call on this transport.
 
-    Returns newly discovered match IDs. This precedes choosing a match to
-    join — it operates directly on a ``Transport``, not a ``PlayerClient``
-    (which is already bound to one match's coordinator).
+    Returns ``(coordinator_destination, match_id)`` pairs for newly
+    discovered matches — the destination is needed to actually join one,
+    not just display it. This precedes choosing a match to join — it
+    operates directly on a ``Transport``, not a ``PlayerClient`` (which
+    is already bound to one match's coordinator).
     """
-    return [announcement.data.decode("utf-8") for announcement in transport.discover()]
+    return [(announcement.destination, announcement.data.decode("utf-8")) for announcement in transport.discover()]
 
 
 class PlayerClient:
     """One player's session against a single match's coordinator."""
 
     def __init__(
-        self, identity: Identity, transport: Transport, coordinator_destination: str, match_id: str
+        self,
+        identity: Identity,
+        transport: Transport,
+        coordinator_destination: str,
+        match_id: str,
+        *,
+        initial_sequence_number: int = 0,
     ) -> None:
         self.identity = identity
         self.transport = transport
         self.coordinator_destination = coordinator_destination
         self.match_id = match_id
-        self._sequence_number = 0
+        # The coordinator enforces a *persistently* strictly-increasing sequence
+        # number per sender (replay protection — see coordinator/match.py). A
+        # long-lived PlayerClient can start from 0, but a caller that's one of
+        # several separate, short-lived processes acting as the same player over
+        # time (e.g. client/cli.py, a new process per command) must carry the
+        # last value forward via initial_sequence_number, or every command after
+        # its first would be rejected as a replay of the first.
+        self._sequence_number = initial_sequence_number
 
         self.game_info: GameInfo | None = None
         self.faction_name: str | None = None
@@ -273,6 +288,12 @@ class PlayerClient:
 
     def _next_sequence(self) -> int:
         self._sequence_number += 1
+        return self._sequence_number
+
+    @property
+    def sequence_number(self) -> int:
+        """The last sequence number used — pass this back as ``initial_sequence_number``
+        to a later PlayerClient acting as the same player, to keep replay protection happy."""
         return self._sequence_number
 
     def _send(self, message: AnyMessage) -> None:

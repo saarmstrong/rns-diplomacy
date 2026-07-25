@@ -219,20 +219,25 @@
 ### Match Discovery & Join
 
 - [x] Listen for coordinator announces
-- [ ] Display discovered matches (CLI rendering — Phase 6)
+- [x] Display discovered matches (client `discover` command)
 - [x] Send JOIN_REQUEST with match-scoped identity
 - [x] Receive and decrypt faction assignment from JOIN_ACCEPTED
 - [x] Handle JOIN_REJECTED gracefully
 
 ### Order Composition & Submission
 
-- [ ] Display current units and valid order options (CLI rendering — Phase 6; data layer done in client/orders.py)
-- [ ] Interactive order builder (select unit → select order type → select target) (CLI — Phase 6; compose_order() API ready)
+- [x] Display current units (client `status` command's "your units" section)
+- [ ] Display valid order options per unit / interactive order builder (select unit → select
+      order type → select target) — `client/orders.py`'s `get_move_options` /
+      `get_support_hold_options` / `get_support_move_options` exist and are unit-tested, but
+      the CLI's `order` command is flag-based (`--order REGION:TYPE[:ARGS]`) rather than
+      surfacing them interactively; composing an order still requires knowing valid
+      destinations from `status`/the map, not from the CLI itself
 - [x] Validate orders locally before submission
 - [x] Submit orders and track revision number
 - [x] Receive and store ORDER_RECEIPT
 - [x] Support order revision and cancellation
-- [ ] Display order status (CLI rendering — Phase 6)
+- [x] Display order status (client `orders` command)
 
 ### Negotiation
 
@@ -240,7 +245,10 @@
 - [x] Send encrypted negotiation messages to factions (Reticulum encrypts end-to-end to the recipient identity automatically; no separate application-layer step needed)
 - [x] Receive and decrypt negotiation messages (same — transparent to client/negotiations.py)
 - [x] Send NEGOTIATION_ACK on receipt
-- [ ] Display negotiation history per faction (CLI rendering — Phase 6; client.negotiations.group_by_sender does the grouping)
+- [x] Display negotiation history (client `history` command) — grouped by sender public key
+      prefix, not faction name; there's no in-protocol directory mapping a negotiation
+      partner's pubkey to their faction (see docs/architecture.md's Known limitations), so
+      `group_by_sender`'s grouping is the only grouping available
 
 ### Verification
 
@@ -252,64 +260,65 @@
 
 ### Game State Display
 
-- [ ] Display current map state (regions, units, ownership)
-- [ ] Display control center status
-- [ ] Display current phase and deadline
-- [ ] Display phase history
+- [x] Display current map state (client `status` command's units section; full region/adjacency
+      graph rendering isn't done — only the player's own units and supply centers)
+- [x] Display control center status (client `status` command's "control centers by faction")
+- [x] Display current phase and deadline (client `status` command)
+- [x] Display phase history (client `history` command)
 
 ## Phase 6: Integration & Polish
 
 ### CLI — Coordinator
 
-- [ ] Implement `create` command
-- [ ] Implement `start` command
-- [ ] Implement `status` command
-- [ ] Implement `advance-phase` command
-- [ ] Implement `list-players` command
-- [ ] Implement `pause` / `resume` commands
-- [ ] Implement `end` command
-- [ ] Add help text for all commands
+- [x] Implement `create` command
+- [x] Implement `start` command
+- [x] Implement `status` command
+- [x] Implement `advance-phase` command
+- [x] Implement `list-players` command
+- [x] Implement `pause` / `resume` commands
+- [x] Implement `end` command
+- [x] Add help text for all commands
 
 ### CLI — Client
 
-- [ ] Implement `discover` command
-- [ ] Implement `join` command
-- [ ] Implement `status` command
-- [ ] Implement `negotiate` command
-- [ ] Implement `order` command
-- [ ] Implement `orders` command
-- [ ] Implement `verify` command
-- [ ] Implement `history` command
-- [ ] Implement `draw` command
-- [ ] Add help text for all commands
+- [x] Implement `discover` command
+- [x] Implement `join` command
+- [x] Implement `status` command
+- [x] Implement `negotiate` command
+- [x] Implement `order` command
+- [x] Implement `orders` command
+- [x] Implement `verify` command
+- [x] Implement `history` command
+- [x] Implement `draw` command
+- [x] Add help text for all commands
 
 ### Integration Tests
 
-- [ ] 7-client full game simulation with InMemoryTransport
-- [ ] Test complete match lifecycle: discovery → join → negotiate → order → adjudicate → repeat
-- [ ] Test retreat phase triggers correctly
-- [ ] Test adjustment phase triggers correctly
-- [ ] Test draw proposal and voting
-- [ ] Test coordinator restart and recovery mid-match
-- [ ] Test default orders on deadline expiry
-- [ ] Test order revision and cancellation flow
-- [ ] Test client verification catches tampered state
+- [x] 7-client full game simulation with InMemoryTransport
+- [x] Test complete match lifecycle: discovery → join → negotiate → order → adjudicate → repeat
+- [x] Test retreat phase triggers correctly
+- [x] Test adjustment phase triggers correctly
+- [x] Test draw proposal and voting
+- [x] Test coordinator restart and recovery mid-match
+- [x] Test default orders on deadline expiry
+- [x] Test order revision and cancellation flow
+- [x] Test client verification catches tampered state
 
 ### Documentation
 
-- [ ] Write README.md (overview, quick start, dependencies)
-- [ ] Write docs/architecture.md (system design, data flow)
-- [ ] Write docs/protocol.md (message format reference)
-- [ ] Write docs/identity-model.md (identity concepts, privacy)
-- [ ] Write docs/threat-model.md (attack vectors, mitigations)
-- [ ] Write docs/development.md (setup, testing, contributing)
+- [x] Write README.md (overview, quick start, dependencies)
+- [x] Write docs/architecture.md (system design, data flow)
+- [x] Write docs/protocol.md (message format reference)
+- [x] Write docs/identity-model.md (identity concepts, privacy)
+- [x] Write docs/threat-model.md (attack vectors, mitigations)
+- [x] Write docs/development.md (setup, testing, contributing)
 
 ### Security Hardening
 
-- [ ] Enforce message size limits at transport layer
-- [ ] Implement replay protection (reject duplicate sequence numbers)
-- [ ] Restrict filesystem permissions on SQLite and key files
-- [ ] Validate all inputs at coordinator boundary
-- [ ] Rate-limit JOIN_REQUEST processing
-- [ ] Log security-relevant events (rejected joins, validation failures)
-- [ ] Review all deserialization paths for injection/crash vectors
+- [x] Enforce message size limits at transport layer (protocol/encoding.py checks MAX_MESSAGE_SIZE before parsing and before sending, on every message)
+- [x] Implement replay protection (reject duplicate sequence numbers) (coordinator/match.py::handle_inbound + coordinator/persistence.py's sender_sequence_numbers table)
+- [x] Restrict filesystem permissions on SQLite and key files (MatchStore chmod 0600 on the DB file; client identity files already were)
+- [x] Validate all inputs at coordinator boundary (protocol/validation.py::validate_message, run on every decoded inbound message before dispatch)
+- [x] Rate-limit JOIN_REQUEST processing (coordinator/match.py::_on_join_request, 5 attempts/60s per sender public key, in-memory)
+- [x] Log security-relevant events (rejected joins, validation failures) (shared/logging.py + log calls in coordinator/match.py for malformed messages, replay rejections, rate-limit trips, and JOIN_REJECTED)
+- [x] Review all deserialization paths for injection/crash vectors (audited: no pickle/eval/exec anywhere; msgpack unpacking always wrapped in try/except; size-capped before any parsing is attempted)

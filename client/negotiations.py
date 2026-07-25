@@ -2,10 +2,25 @@
 
 Per the identity model, negotiation never touches the coordinator: two
 players exchange NEGOTIATION messages directly over their own
-destinations (real transport: LXMF; here, the abstract Transport, same
-as everywhere else in this codebase — real LXMF wiring is deferred
-alongside ``ReticulumTransport``). The coordinator cannot read or censor
-these messages because it's never in the path.
+destinations (the abstract Transport — ``InMemoryTransport`` in tests,
+real LXMF delivery via ``shared/reticulum_transport.py`` in production).
+The coordinator cannot read or censor these messages because it's never
+in the path.
+
+Known limitation on true first contact: if two players have never
+exchanged anything before (no prior message, no observed announce), the
+recipient may only be able to identify the sender by a one-way
+destination hash rather than their full public key (see
+``ReticulumTransport._on_delivery``'s handling of ``LXMessage.get_source()
+is None``) — enough to log who sent it, but not enough to reply to,
+unlike JOIN_REQUEST which carries the sender's public key in the message
+body for exactly this reason. ``Negotiation`` has no equivalent field.
+In practice this resolves itself once either side has announced (which
+a real LXMF client typically does periodically) or once any other
+message has passed between them (e.g. a shared match's JOIN_ACCEPTED
+round trip lets the coordinator recall a player, but does not
+introduce two *players* to each other — they still need their own
+prior contact or announce).
 """
 
 from __future__ import annotations
